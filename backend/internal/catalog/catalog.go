@@ -321,14 +321,15 @@ func (c *Catalog) IncrementView(ctx context.Context, id string) (int, error) {
 
 // VideoMetaPatch 轻量更新视频元数据（仅非零值字段会被写入）
 type VideoMetaPatch struct {
-	ThumbnailURL    string
-	ThumbnailStatus string
-	DurationSeconds int
-	Category        string
-	ContentHash     string
-	FileName        string
-	Tags            []string
-	TagsSet         bool
+	ThumbnailURL           string
+	ThumbnailStatus        string
+	ResetThumbnailFailures bool
+	DurationSeconds        int
+	Category               string
+	ContentHash            string
+	FileName               string
+	Tags                   []string
+	TagsSet                bool
 }
 
 func (c *Catalog) UpdateVideoMeta(ctx context.Context, id string, p VideoMetaPatch) error {
@@ -342,8 +343,12 @@ func (c *Catalog) UpdateVideoMeta(ctx context.Context, id string, p VideoMetaPat
 	case p.ThumbnailStatus != "":
 		// 调用方显式指定 status —— 信任之；典型是 worker 把状态置 'failed' 或
 		// 在重试时显式置 'pending'。
+		status := nullableStatus(p.ThumbnailStatus)
 		parts = append(parts, "thumbnail_status = ?")
-		args = append(args, nullableStatus(p.ThumbnailStatus))
+		args = append(args, status)
+		if status == "ready" {
+			p.ResetThumbnailFailures = true
+		}
 	case p.ThumbnailURL != "":
 		// 调用方写了 url 但没显式给 status —— 视为"封面就绪"。url 非空意味着
 		// 浏览器访问那个 URL 能拿到图（要么是本地 /p/thumb/<id>，要么是网盘 API
@@ -351,6 +356,10 @@ func (c *Catalog) UpdateVideoMeta(ctx context.Context, id string, p VideoMetaPat
 		// 仍是 'pending' 的脏状态（修过的历史 bug）。
 		parts = append(parts, "thumbnail_status = ?")
 		args = append(args, nullableStatus("ready"))
+		p.ResetThumbnailFailures = true
+	}
+	if p.ResetThumbnailFailures {
+		parts = append(parts, "thumbnail_failures = 0")
 	}
 	if p.DurationSeconds > 0 {
 		parts = append(parts, "duration_seconds = ?")
@@ -387,6 +396,38 @@ func (c *Catalog) UpdateVideoMeta(ctx context.Context, id string, p VideoMetaPat
 		return c.SetAutoVideoTags(ctx, id, p.Tags)
 	}
 	return nil
+}
+
+func (c *Catalog) IncrementThumbnailFailures(ctx context.Context, id string) (int, error) {
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx,
+		`UPDATE videos
+		    SET thumbnail_failures = COALESCE(thumbnail_failures, 0) + 1,
+		        updated_at = ?
+		  WHERE id = ?`,
+		time.Now().UnixMilli(), id)
+	if err != nil {
+		return 0, err
+	}
+	if affected, err := res.RowsAffected(); err == nil && affected == 0 {
+		return 0, sql.ErrNoRows
+	}
+
+	var failures int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(thumbnail_failures, 0) FROM videos WHERE id = ?`,
+		id).Scan(&failures); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return failures, nil
 }
 
 // ListCategories 聚合所有 category，按视频数降序

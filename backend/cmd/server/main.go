@@ -1513,8 +1513,9 @@ func (a *App) regenFailedThumbnails(ctx context.Context, driveID string) {
 		// 来判断是否真的要再生）。但既然之前是 failed 说明 url 没写过，所以这里
 		// 把 url 一并清空更稳。
 		if err := a.cat.UpdateVideoMeta(ctx, v.ID, catalog.VideoMetaPatch{
-			ThumbnailURL:    "",
-			ThumbnailStatus: "pending",
+			ThumbnailURL:           "",
+			ThumbnailStatus:        "pending",
+			ResetThumbnailFailures: true,
 		}); err != nil {
 			log.Printf("[thumb] reset failed video %s drive=%s: %v", v.ID, driveID, err)
 			continue
