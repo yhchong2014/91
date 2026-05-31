@@ -3,6 +3,10 @@ import { CheckSquare, Film, Plus, RefreshCw, Search, Tags, Trash2 } from "lucide
 import * as api from "./api";
 import { useToast } from "./ToastContext";
 
+const DESKTOP_TAGS_PAGE_SIZE = 25;
+const MOBILE_TAGS_PAGE_SIZE = 8;
+const TAGS_MOBILE_QUERY = "(max-width: 640px)";
+
 export function TagsPage() {
   const [tags, setTags] = useState<api.AdminTag[]>([]);
   const [label, setLabel] = useState("");
@@ -15,6 +19,8 @@ export function TagsPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const pageSize = useTagsPageSize();
+  const [page, setPage] = useState(1);
   const { show } = useToast();
 
   async function refresh() {
@@ -143,18 +149,37 @@ export function TagsPage() {
     });
   }, [tags, searchQuery, filterSource]);
 
-  const deletableFiltered = useMemo(
-    () => filteredTags.filter((t) => t.source !== "system"),
-    [filteredTags]
+  const totalPages = Math.max(1, Math.ceil(filteredTags.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStartIndex = (currentPage - 1) * pageSize;
+  const pageEndIndex = pageStartIndex + pageSize;
+  const pagedTags = useMemo(
+    () => filteredTags.slice(pageStartIndex, pageEndIndex),
+    [filteredTags, pageStartIndex, pageEndIndex]
+  );
+  const pageStart = filteredTags.length === 0 ? 0 : pageStartIndex + 1;
+  const pageEnd = Math.min(filteredTags.length, pageEndIndex);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, filterSource, pageSize]);
+
+  useEffect(() => {
+    setPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [totalPages]);
+
+  const deletablePageTags = useMemo(
+    () => pagedTags.filter((t) => t.source !== "system"),
+    [pagedTags]
   );
   const allSelected =
-    deletableFiltered.length > 0 && deletableFiltered.every((t) => selected.has(t.id));
+    deletablePageTags.length > 0 && deletablePageTags.every((t) => selected.has(t.id));
 
   function toggleSelectAll() {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (allSelected) deletableFiltered.forEach((t) => next.delete(t.id));
-      else deletableFiltered.forEach((t) => next.add(t.id));
+      if (allSelected) deletablePageTags.forEach((t) => next.delete(t.id));
+      else deletablePageTags.forEach((t) => next.add(t.id));
       return next;
     });
   }
@@ -288,7 +313,7 @@ export function TagsPage() {
             <div className="admin-tags-bulkbar">
               <label className="admin-check">
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
-                <span>全选当前 ({deletableFiltered.length})</span>
+                <span>全选本页 ({deletablePageTags.length})</span>
               </label>
               <span className="admin-tags-bulkbar__count">已选 {selected.size} 个</span>
               <button
@@ -317,73 +342,135 @@ export function TagsPage() {
               没有找到匹配的标签。
             </div>
           ) : (
-            <div className="admin-tags-grid">
-              {filteredTags.map((tag) => {
-                const selectable = selectMode && tag.source !== "system";
-                const isSelected = selected.has(tag.id);
-                return (
-                <div
-                  key={tag.id}
-                  className={`admin-tag-card${selectable ? " is-selectable" : ""}${
-                    selectable && isSelected ? " is-selected" : ""
-                  }`}
-                  onClick={selectable ? () => toggleSelect(tag.id) : undefined}
-                >
-                  <div className="admin-tag-card__head">
-                    {selectable && (
-                      <input
-                        type="checkbox"
-                        className="admin-tag-card__check"
-                        checked={isSelected}
-                        readOnly
-                      />
-                    )}
-                    <span className="admin-tag-card__title">{tag.label}</span>
-                    <span className="admin-tag-card__source-badge" data-source={tag.source}>
-                      {sourceLabel(tag.source)}
-                    </span>
-                  </div>
-
-                  {tag.aliases && tag.aliases.length > 0 && (
-                    <div className="admin-tag-card__aliases">
-                      {tag.aliases.map((alias) => (
-                        <span key={alias} className="admin-tag-card__alias-pill">
-                          {alias}
+            <>
+              <div className="admin-tags-grid">
+                {pagedTags.map((tag) => {
+                  const selectable = selectMode && tag.source !== "system";
+                  const isSelected = selected.has(tag.id);
+                  return (
+                    <div
+                      key={tag.id}
+                      className={`admin-tag-card${selectable ? " is-selectable" : ""}${
+                        selectable && isSelected ? " is-selected" : ""
+                      }`}
+                      onClick={selectable ? () => toggleSelect(tag.id) : undefined}
+                    >
+                      <div className="admin-tag-card__head">
+                        {selectable && (
+                          <input
+                            type="checkbox"
+                            className="admin-tag-card__check"
+                            checked={isSelected}
+                            readOnly
+                          />
+                        )}
+                        <span className="admin-tag-card__title">{tag.label}</span>
+                        <span className="admin-tag-card__source-badge" data-source={tag.source}>
+                          {sourceLabel(tag.source)}
                         </span>
-                      ))}
-                    </div>
-                  )}
+                      </div>
 
-                  <div className="admin-tag-card__footer">
-                    <span className="admin-tag-card__count">
-                      <Film size={13} />
-                      <strong>{tag.count}</strong> 视频
-                    </span>
-                    <div className="admin-tag-card__footer-actions">
-                      <span className="admin-tag-card__id">#{tag.id}</span>
-                      {!selectMode && tag.source !== "system" && (
-                        <button
-                          type="button"
-                          className="admin-tag-card__delete"
-                          onClick={() => handleDelete(tag)}
-                          disabled={deletingId === tag.id}
-                          aria-label={`删除标签 ${tag.label}`}
-                        >
-                          <Trash2 size={11} />
-                          <span>{deletingId === tag.id ? "删除中" : "删除"}</span>
-                        </button>
+                      {tag.aliases && tag.aliases.length > 0 && (
+                        <div className="admin-tag-card__aliases">
+                          {tag.aliases.map((alias) => (
+                            <span key={alias} className="admin-tag-card__alias-pill">
+                              {alias}
+                            </span>
+                          ))}
+                        </div>
                       )}
+
+                      <div className="admin-tag-card__footer">
+                        <span className="admin-tag-card__count">
+                          <Film size={13} />
+                          <strong>{tag.count}</strong> 视频
+                        </span>
+                        <div className="admin-tag-card__footer-actions">
+                          <span className="admin-tag-card__id">#{tag.id}</span>
+                          {!selectMode && tag.source !== "system" && (
+                            <button
+                              type="button"
+                              className="admin-tag-card__delete"
+                              onClick={() => handleDelete(tag)}
+                              disabled={deletingId === tag.id}
+                              aria-label={`删除标签 ${tag.label}`}
+                            >
+                              <Trash2 size={11} />
+                              <span>{deletingId === tag.id ? "删除中" : "删除"}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="admin-table-pagination admin-tags-pagination">
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    onClick={() => setPage(1)}
+                    disabled={currentPage <= 1}
+                  >
+                    首页
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    上一页
+                  </button>
+                  <span className="admin-table-pagination__info">
+                    第 {currentPage} / {totalPages} 页，显示 {pageStart}-{pageEnd} / {filteredTags.length}，每页 {pageSize} 个
+                  </span>
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                  >
+                    下一页
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    onClick={() => setPage(totalPages)}
+                    disabled={currentPage >= totalPages}
+                  >
+                    末页
+                  </button>
                 </div>
-                );
-              })}
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>
     </section>
   );
+}
+
+function useTagsPageSize() {
+  const [pageSize, setPageSize] = useState(() =>
+    window.matchMedia(TAGS_MOBILE_QUERY).matches
+      ? MOBILE_TAGS_PAGE_SIZE
+      : DESKTOP_TAGS_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia(TAGS_MOBILE_QUERY);
+    const update = () => {
+      setPageSize(media.matches ? MOBILE_TAGS_PAGE_SIZE : DESKTOP_TAGS_PAGE_SIZE);
+    };
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return pageSize;
 }
 
 function splitList(s: string): string[] {
