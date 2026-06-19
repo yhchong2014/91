@@ -479,9 +479,10 @@ func (a *AdminServer) handleListDrives(w http.ResponseWriter, r *http.Request) {
 		SkipDirIDs []string `json:"skipDirIds"`
 		// LastCrawlAt 是 spider91 上次成功爬取的 unix 秒（来自 credentials.last_crawl_at）。
 		// 其它 kind 留 0；前端用它显示"上次抓取: N 小时前"。
-		Spider91Proxy           string `json:"spider91Proxy,omitempty"`
-		LastCrawlAt             int64  `json:"lastCrawlAt,omitempty"`
-		GoogleDriveUseOnlineAPI *bool  `json:"googleDriveUseOnlineAPI,omitempty"`
+		Spider91Proxy             string `json:"spider91Proxy,omitempty"`
+		LastCrawlAt               int64  `json:"lastCrawlAt,omitempty"`
+		GoogleDriveUseOnlineAPI   *bool  `json:"googleDriveUseOnlineAPI,omitempty"`
+		GoogleDriveOpenListAPIURL string `json:"googleDriveOpenListApiUrl,omitempty"`
 		// STRMAllowOutsideRoot 是 localstorage 的 .strm 越root开关；其它 kind 省略。
 		STRMAllowOutsideRoot          *bool            `json:"strmAllowOutsideRoot,omitempty"`
 		ScanGenerationStatus          GenerationStatus `json:"scanGenerationStatus"`
@@ -560,6 +561,7 @@ func (a *AdminServer) handleListDrives(w http.ResponseWriter, r *http.Request) {
 			Spider91Proxy:                 spider91ProxyForDrive(d),
 			LastCrawlAt:                   lastCrawlAt,
 			GoogleDriveUseOnlineAPI:       googleDriveUseOnlineAPIForDrive(d),
+			GoogleDriveOpenListAPIURL:     googleDriveOpenListAPIURLForDrive(d),
 			STRMAllowOutsideRoot:          strmAllowOutsideRootForDrive(d),
 			ScanGenerationStatus:          generation.Scan,
 			ThumbnailGenerationStatus:     generation.Thumbnail,
@@ -628,7 +630,9 @@ func (a *AdminServer) handleUpsertDrive(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		body.Credentials = credentials
-	} else if body.Kind == "googledrive" || body.Kind == "localstorage" || body.Kind == "guangyapan" {
+	} else if body.Kind == "googledrive" {
+		body.Credentials = mergeGoogleDriveCredentials(existing, body.Credentials)
+	} else if body.Kind == "localstorage" || body.Kind == "guangyapan" {
 		// 按键合并、空值沿用旧值：这些网盘的编辑表单允许只改某几个字段，
 		// 其它 token / 路径 / 开关字段应保留旧值。
 		body.Credentials = mergeNonEmptyCredentials(existing, body.Credentials)
@@ -1410,6 +1414,21 @@ func googleDriveUseOnlineAPIForDrive(d *catalog.Drive) *bool {
 	}
 	result = v
 	return &result
+}
+
+func googleDriveOpenListAPIURLForDrive(d *catalog.Drive) string {
+	if d == nil || d.Kind != "googledrive" || d.Credentials == nil {
+		return ""
+	}
+	return strings.TrimSpace(d.Credentials["api_url_address"])
+}
+
+func mergeGoogleDriveCredentials(existing *catalog.Drive, incoming map[string]string) map[string]string {
+	merged := mergeNonEmptyCredentials(existing, incoming)
+	if _, ok := incoming["api_url_address"]; ok && strings.TrimSpace(incoming["api_url_address"]) == "" {
+		delete(merged, "api_url_address")
+	}
+	return merged
 }
 
 // mergeNonEmptyCredentials 逐键合并凭证：incoming 里非空的键覆盖旧值，

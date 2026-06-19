@@ -323,15 +323,15 @@ export function credentialFields(kind: Kind, creds: Record<string, string> = {})
             { value: "false", label: "自建 Google OAuth 客户端" },
           ],
         },
-        {
-          key: "refresh_token",
-          label: "refresh_token",
-          placeholder: "OpenList Google Drive refresh_token",
-          multiline: true,
-          required: true,
-        },
         ...(googleDriveUsesOnlineAPI(creds)
-          ? []
+          ? [
+              {
+                key: "api_url_address",
+                label: "OpenList 在线 API URL",
+                placeholder: "默认：https://api.oplist.org/googleui/renewapi",
+                help: "留空时使用 OpenList 官方在线 API，填写后会使用自定义续期 API。",
+              },
+            ]
           : [
               {
                 key: "client_id",
@@ -348,6 +348,13 @@ export function credentialFields(kind: Kind, creds: Record<string, string> = {})
                 help: "Google Cloud Console 中同一个 OAuth 客户端的 Client Secret",
               },
             ]),
+        {
+          key: "refresh_token",
+          label: "refresh_token",
+          placeholder: "OpenList Google Drive refresh_token",
+          multiline: true,
+          required: true,
+        },
       ];
     case "localstorage":
       return [

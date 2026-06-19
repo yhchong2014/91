@@ -217,7 +217,10 @@ export function DrivesPage() {
         d.kind === "spider91"
           ? { proxy: d.spider91Proxy ?? "" }
           : d.kind === "googledrive"
-          ? { use_online_api: (d.googleDriveUseOnlineAPI ?? true) ? "true" : "false" }
+          ? {
+              use_online_api: (d.googleDriveUseOnlineAPI ?? true) ? "true" : "false",
+              api_url_address: d.googleDriveOpenListApiUrl ?? "",
+            }
           : d.kind === "localstorage"
           ? { strm_allow_outside_root: (d.strmAllowOutsideRoot ?? false) ? "true" : "false" }
           : {},

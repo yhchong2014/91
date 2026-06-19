@@ -732,6 +732,31 @@ func TestHandleUpsertGoogleDriveMergesOAuthCredentials(t *testing.T) {
 	if got.Credentials["client_id"] != "google-client-id" || got.Credentials["client_secret"] != "google-client-secret" {
 		t.Fatalf("oauth client credentials = %#v, want saved", got.Credentials)
 	}
+	if got.Credentials["api_url_address"] != "https://api.oplist.org/googleui/renewapi" {
+		t.Fatalf("api_url_address = %q, want preserved", got.Credentials["api_url_address"])
+	}
+
+	clearReq := httptest.NewRequest(http.MethodPost, "/admin/api/drives", bytes.NewBufferString(`{
+		"id": "google-main",
+		"kind": "googledrive",
+		"name": "Google Drive",
+		"rootId": "root",
+		"credentials": {
+			"api_url_address": ""
+		}
+	}`))
+	clearRR := httptest.NewRecorder()
+	(&AdminServer{Catalog: cat}).handleUpsertDrive(clearRR, clearReq)
+	if clearRR.Code != http.StatusOK {
+		t.Fatalf("clear status = %d, body = %s", clearRR.Code, clearRR.Body.String())
+	}
+	cleared, err := cat.GetDrive(ctx, "google-main")
+	if err != nil {
+		t.Fatalf("get cleared drive: %v", err)
+	}
+	if _, ok := cleared.Credentials["api_url_address"]; ok {
+		t.Fatalf("api_url_address was not cleared: %#v", cleared.Credentials)
+	}
 }
 
 func TestHandleUpsertSpider91DriveIsRejected(t *testing.T) {
@@ -1948,7 +1973,8 @@ func TestHandleListDrivesIncludesGoogleDriveOnlineAPIMode(t *testing.T) {
 			Name:   "Google Legacy",
 			RootID: "root",
 			Credentials: map[string]string{
-				"refresh_token": "legacy-refresh",
+				"refresh_token":   "legacy-refresh",
+				"api_url_address": "https://openlist-api.example/googleui/renewapi",
 			},
 			Status: "ok",
 		},
@@ -1979,21 +2005,27 @@ func TestHandleListDrivesIncludesGoogleDriveOnlineAPIMode(t *testing.T) {
 	}
 
 	var got []struct {
-		ID                      string `json:"id"`
-		GoogleDriveUseOnlineAPI bool   `json:"googleDriveUseOnlineAPI"`
+		ID                        string `json:"id"`
+		GoogleDriveUseOnlineAPI   bool   `json:"googleDriveUseOnlineAPI"`
+		GoogleDriveOpenListAPIURL string `json:"googleDriveOpenListApiUrl"`
 	}
 	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	byID := map[string]bool{}
+	byAPIURL := map[string]string{}
 	for _, d := range got {
 		byID[d.ID] = d.GoogleDriveUseOnlineAPI
+		byAPIURL[d.ID] = d.GoogleDriveOpenListAPIURL
 	}
 	if !byID["google-legacy"] {
 		t.Fatalf("legacy google drive use_online_api = false, want true")
 	}
 	if byID["google-oauth"] {
 		t.Fatalf("oauth google drive use_online_api = true, want false")
+	}
+	if byAPIURL["google-legacy"] != "https://openlist-api.example/googleui/renewapi" {
+		t.Fatalf("legacy google drive openlist api url = %q, want custom URL", byAPIURL["google-legacy"])
 	}
 }
 

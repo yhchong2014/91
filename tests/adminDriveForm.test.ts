@@ -145,7 +145,8 @@ test("googledrive drive form supports online API and custom OAuth client modes",
   assert.match(fields, /key: "client_id"/);
   assert.match(fields, /key: "client_secret"/);
   assert.match(fields, /googleDriveUsesOnlineAPI\(creds\)/);
-  assert.doesNotMatch(fields, /key: "api_url_address"/);
+  assert.match(fields, /key: "api_url_address"/);
+  assert.match(fields, /OpenList 在线 API URL/);
   assert.doesNotMatch(fields, /在线 API 模式填写 OpenList 获取的 refresh_token/);
   assert.doesNotMatch(constantsSource, /请参考OpenList文档中关于谷歌云盘的配置方法。/);
   assert.doesNotMatch(constantsSource, /选择自建 Google OAuth 客户端后，服务端会直接请求 Google OAuth token 接口续期。/);
@@ -154,7 +155,9 @@ test("googledrive drive form supports online API and custom OAuth client modes",
   assert.match(driveFormSource, /className="admin-form-select"/);
   assert.match(driveFormSource, /ChevronDown/);
   assert.match(drivesPageSource, /googleDriveUseOnlineAPI/);
+  assert.match(drivesPageSource, /googleDriveOpenListApiUrl/);
   assert.match(apiSource, /googleDriveUseOnlineAPI\?: boolean/);
+  assert.match(apiSource, /googleDriveOpenListApiUrl\?: string/);
   assert.doesNotMatch(fields, /key: "access_token"/);
 });
 
