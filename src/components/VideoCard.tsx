@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import type { PreviewState, VideoItem } from "@/types";
 import { previewController } from "@/lib/previewController";
 import {
@@ -8,6 +8,7 @@ import {
 } from "@/lib/previewIntent";
 import { useInViewport } from "@/lib/useInViewport";
 import { formatCount } from "@/lib/format";
+import { isVideoReturnPath, routeToPath } from "@/lib/videoReturnPath";
 import { PreviewVideo } from "./PreviewVideo";
 
 type Props = {
@@ -30,6 +31,12 @@ export function VideoCard({ video, priority = false }: Props) {
   const [shouldRenderPreview, setShouldRenderPreview] = useState(false);
   const [progress, setProgress] = useState(0); // 0~1
   const [thumbnailRetry, setThumbnailRetry] = useState(0);
+  const author = video.author.trim();
+  const location = useLocation();
+  const currentPath = routeToPath(location);
+  const linkState = isVideoReturnPath(currentPath)
+    ? { from: currentPath }
+    : undefined;
 
   const rootRef = useRef<HTMLElement | null>(null);
   const hoverTimerRef = useRef<number | null>(null);
@@ -196,6 +203,7 @@ export function VideoCard({ video, priority = false }: Props) {
     >
       <Link
         to={video.href}
+        state={linkState}
         className="video-card__link"
         tabIndex={0}
         onClickCapture={handleClickCapture}
@@ -271,9 +279,13 @@ export function VideoCard({ video, priority = false }: Props) {
         </h3>
 
         <div className="video-meta">
-          <span className="video-meta__author">{video.author}</span>
-          <span>{formatCount(video.views)} 观看</span>
-          <span>{video.publishedAt}</span>
+          {author && (
+            <span className="video-meta__author" title={author}>
+              {author}
+            </span>
+          )}
+          <span className="video-meta__views">{formatCount(video.views)} 观看</span>
+          <span className="video-meta__date">{video.publishedAt}</span>
         </div>
       </Link>
     </article>

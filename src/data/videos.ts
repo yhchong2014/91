@@ -13,7 +13,7 @@ export function fetchHomeVideos(excludeIds?: string[]): Promise<VideoItem[]> {
 export function fetchListing(
   page: number,
   pageSize: number,
-  params?: { q?: string; tag?: string; cat?: string; sort?: string; includeTotal?: boolean }
+  params?: { q?: string; tag?: string; sort?: string; includeTotal?: boolean }
 ): Promise<{ items: VideoItem[]; total: number }> {
   const qs = new URLSearchParams({
     page: String(page),
@@ -21,7 +21,6 @@ export function fetchListing(
   });
   if (params?.q) qs.set("q", params.q);
   if (params?.tag) qs.set("tag", params.tag);
-  if (params?.cat) qs.set("cat", params.cat);
   if (params?.sort) qs.set("sort", params.sort);
   if (params?.includeTotal === false) qs.set("count", "false");
   return apiGet<{ items: VideoItem[]; total: number }>(

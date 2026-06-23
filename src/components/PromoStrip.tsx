@@ -1,8 +1,8 @@
-import { promoItems } from "@/data/categories";
+import { promoItems } from "@/data/promos";
 
 const kindLabel: Record<string, string> = {
   channel: "频道",
-  collection: "合集",
+  topic: "专题",
   event: "活动",
 };
 

@@ -82,7 +82,7 @@ export function VideosPage() {
         <h1 className="admin-page__title">视频管理</h1>
       </header>
 
-      <div className="admin-video-tabs" role="tablist" aria-label="视频管理分类">
+      <div className="admin-video-tabs" role="tablist" aria-label="视频管理标签页">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -217,11 +217,6 @@ function CurrentVideosTab({ onStatsChanged }: { onStatsChanged: () => void }) {
 
   const listItems = list;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const pageStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const pageEnd = Math.min(total, page * pageSize);
-  const listSummary = driveId
-    ? `${driveNameMap.get(driveId) ?? driveId}：共 ${total} 个视频，第 ${page} / ${totalPages} 页，显示 ${pageStart}-${pageEnd}`
-    : `全部网盘：共 ${total} 个视频，第 ${page} / ${totalPages} 页，显示 ${pageStart}-${pageEnd}`;
 
   async function handleRegen(v: api.AdminVideo) {
     try {
@@ -379,29 +374,27 @@ function CurrentVideosTab({ onStatsChanged }: { onStatsChanged: () => void }) {
   }
 
   return (
-    <>
-      <div className="admin-page__actions admin-videos-filter">
-        <DriveFilter drives={drives} driveId={driveId} onChange={(id) => { setDriveId(id); setPage(1); }} withCounts />
+    <div className={`admin-videos-current${selectedIds.size > 0 ? " has-bulk-actions" : ""}`}>
+      <div className="admin-page__actions admin-videos-filter admin-videos-filter--current">
+        <DriveFilter drives={drives} driveId={driveId} onChange={(id) => { setDriveId(id); setPage(1); }} />
         <SearchBox keyword={keyword} onChange={setKeyword} onSubmit={handleSearchSubmit} />
-        <button type="button" className="admin-btn" onClick={refresh}>
-          <RefreshCw size={13} /> 刷新
+        <button type="button" className="admin-btn admin-videos-filter__refresh" onClick={refresh} aria-label="刷新当前视频">
+          <RefreshCw size={13} />
+          <span className="admin-videos-filter__refresh-text">刷新</span>
         </button>
       </div>
 
-      {!loading && (
+      {!loading && selectedIds.size > 0 && (
         <div className="admin-videos-list-toolbar">
-          <div className="admin-videos-summary">{listSummary}</div>
-          {selectedIds.size > 0 && (
-            <div className="admin-videos-bulk-actions">
-              <span className="admin-videos-bulk-actions__count">已选择 {selectedIds.size} 项</span>
-              <button type="button" className="admin-btn is-primary admin-videos-bulk-actions__btn" onClick={handleBatchRegen}>
-                <RefreshCw size={13} /> 批量重生预览视频
-              </button>
-              <button type="button" className="admin-btn is-danger admin-videos-bulk-actions__btn" onClick={handleBatchDelete}>
-                <Trash2 size={13} /> 批量删除
-              </button>
-            </div>
-          )}
+          <div className="admin-videos-bulk-actions">
+            <span className="admin-videos-bulk-actions__count">已选择 {selectedIds.size} 项</span>
+            <button type="button" className="admin-btn is-primary admin-videos-bulk-actions__btn" onClick={handleBatchRegen}>
+              <RefreshCw size={13} /> 批量重生预览视频
+            </button>
+            <button type="button" className="admin-btn is-danger admin-videos-bulk-actions__btn" onClick={handleBatchDelete}>
+              <Trash2 size={13} /> 批量删除
+            </button>
+          </div>
         </div>
       )}
 
@@ -452,60 +445,64 @@ function CurrentVideosTab({ onStatsChanged }: { onStatsChanged: () => void }) {
               </tr>
             </thead>
             <tbody>
-              {listItems.map((v) => (
-                <tr key={v.id} className={selectedIds.has(v.id) ? "is-selected" : ""}>
-                  <td className="is-checkbox">
-                    <button
-                      type="button"
-                      className="admin-table-checkbox-btn"
-                      onClick={() => toggleSelect(v.id)}
-                      aria-label={`${selectedIds.has(v.id) ? "取消选择" : "选择"}视频 ${v.title}`}
-                    >
-                      {selectedIds.has(v.id) ? (
-                        <CheckSquare size={16} color="var(--accent)" />
-                      ) : (
-                        <Square size={16} color="var(--border-strong)" />
-                      )}
-                    </button>
-                  </td>
-                  <td data-label="标题">
-                    <VideoTitleCell video={v} />
-                  </td>
-                  <td data-label="作者">{v.author || <span className="admin-text-faint">—</span>}</td>
-                  <td data-label="时长">{formatDur(v.durationSeconds)}</td>
-                  <td data-label="预览视频">
-                    <PreviewStatus s={isPreviewGenerating(v) ? REGEN_PREVIEW_STATUS : v.previewStatus} />
-                  </td>
-                  <td data-label="来源" className="admin-mono-cell">
-                    {driveNameMap.get(v.driveId) ?? v.driveId}
-                  </td>
-                  <td className="is-actions" data-label="操作">
-                    <button type="button" className="admin-btn" onClick={() => setEditing(v)} title="编辑视频">
-                      <Edit size={13} />
-                    </button>{" "}
-                    <button
-                      type="button"
-                      className="admin-btn"
-                      onClick={() => handleRegen(v)}
-                      disabled={isPreviewGenerating(v)}
-                      title={isPreviewGenerating(v) ? "预览视频正在生成" : "重生预览视频"}
-                    >
-                      <RefreshCw size={13} className={isPreviewGenerating(v) ? "admin-spin" : undefined} />
-                    </button>{" "}
-                    <button
-                      type="button"
-                      className="admin-btn is-danger"
-                      onClick={() => {
-                        setDeleteSource(false);
-                        setDeleteTarget(v);
-                      }}
-                      title="删除视频"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {listItems.map((v) => {
+                const isSelected = selectedIds.has(v.id);
+
+                return (
+                  <tr key={v.id} className={isSelected ? "is-selected" : ""}>
+                    <td className="is-checkbox">
+                      <button
+                        type="button"
+                        className={`admin-table-checkbox-btn ${isSelected ? "is-selected" : ""}`}
+                        onClick={() => toggleSelect(v.id)}
+                        aria-label={`${isSelected ? "取消选择" : "选择"}视频 ${v.title}`}
+                      >
+                        {isSelected ? (
+                          <CheckSquare size={16} color="var(--accent)" />
+                        ) : (
+                          <Square size={16} color="var(--border-strong)" />
+                        )}
+                      </button>
+                    </td>
+                    <td data-label="标题">
+                      <VideoTitleCell video={v} />
+                    </td>
+                    <td data-label="作者">{v.author || <span className="admin-text-faint">—</span>}</td>
+                    <td data-label="时长">{formatDur(v.durationSeconds)}</td>
+                    <td data-label="预览视频">
+                      <PreviewStatus s={isPreviewGenerating(v) ? REGEN_PREVIEW_STATUS : v.previewStatus} />
+                    </td>
+                    <td data-label="来源" className="admin-mono-cell">
+                      {driveNameMap.get(v.driveId) ?? v.driveId}
+                    </td>
+                    <td className="is-actions" data-label="操作">
+                      <button type="button" className="admin-btn" onClick={() => setEditing(v)} title="编辑视频">
+                        <Edit size={13} />
+                      </button>{" "}
+                      <button
+                        type="button"
+                        className="admin-btn"
+                        onClick={() => handleRegen(v)}
+                        disabled={isPreviewGenerating(v)}
+                        title={isPreviewGenerating(v) ? "预览视频正在生成" : "重生预览视频"}
+                      >
+                        <RefreshCw size={13} className={isPreviewGenerating(v) ? "admin-spin" : undefined} />
+                      </button>{" "}
+                      <button
+                        type="button"
+                        className="admin-btn is-danger"
+                        onClick={() => {
+                          setDeleteSource(false);
+                          setDeleteTarget(v);
+                        }}
+                        title="删除视频"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <Pagination page={page} totalPages={totalPages} pageSize={pageSize} onPage={setPage} />
@@ -572,7 +569,7 @@ function CurrentVideosTab({ onStatsChanged }: { onStatsChanged: () => void }) {
       >
         <DeleteSourceOption checked={batchDeleteSource} disabled={batchDeleting} onChange={setBatchDeleteSource} note="开启后会先删除源文件，失败的视频会保留管理库记录。" />
       </ConfirmModal>
-    </>
+    </div>
   );
 }
 
@@ -585,6 +582,7 @@ function BlacklistTab({ onStatsChanged }: { onStatsChanged: () => void }) {
   const [loadError, setLoadError] = useState("");
   const [keyword, setKeyword] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [driveId, setDriveId] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [removeTarget, setRemoveTarget] = useState<api.AdminDeletedVideo | null>(null);
@@ -597,7 +595,7 @@ function BlacklistTab({ onStatsChanged }: { onStatsChanged: () => void }) {
     setLoadError("");
     try {
       const [r, driveList] = await Promise.all([
-        api.listBlacklist({ page, size: pageSize, keyword: searchKeyword }),
+        api.listBlacklist({ driveId, page, size: pageSize, keyword: searchKeyword }),
         api.listDrives(),
       ]);
       setList(r.items ?? []);
@@ -614,7 +612,7 @@ function BlacklistTab({ onStatsChanged }: { onStatsChanged: () => void }) {
 
   useEffect(() => {
     refresh();
-  }, [page, searchKeyword, pageSize]);
+  }, [driveId, page, searchKeyword, pageSize]);
 
   useEffect(() => {
     setPage(1);
@@ -661,13 +659,12 @@ function BlacklistTab({ onStatsChanged }: { onStatsChanged: () => void }) {
 
   return (
     <>
-      <div className="admin-tab-intro">
-        被删除和被隐藏的视频会进入黑名单，扫盘时不再重新入库。这里只保留文件名等基本信息（原始记录、封面、预览已删除）。移出黑名单后，视频会在下次扫盘时被重新发现并入库
-      </div>
-      <div className="admin-page__actions admin-videos-filter">
+      <div className="admin-page__actions admin-videos-filter admin-videos-filter--blacklist">
+        <DriveFilter drives={drives} driveId={driveId} onChange={(id) => { setDriveId(id); setPage(1); }} />
         <SearchBox keyword={keyword} onChange={setKeyword} onSubmit={handleSearchSubmit} placeholder="搜索文件名" />
-        <button type="button" className="admin-btn" onClick={refresh}>
-          <RefreshCw size={13} /> 刷新
+        <button type="button" className="admin-btn admin-videos-filter__refresh" onClick={refresh} aria-label="刷新拉黑视频">
+          <RefreshCw size={13} />
+          <span className="admin-videos-filter__refresh-text">刷新</span>
         </button>
       </div>
 
@@ -755,12 +752,10 @@ function DriveFilter({
   drives,
   driveId,
   onChange,
-  withCounts = false,
 }: {
   drives: api.AdminDrive[];
   driveId: string;
   onChange: (id: string) => void;
-  withCounts?: boolean;
 }) {
   return (
     <div className="admin-videos-filter__select-wrap">
@@ -773,7 +768,6 @@ function DriveFilter({
         {drives.map((d) => (
           <option key={d.id} value={d.id}>
             {d.name || d.id}
-            {withCounts ? `（已生成 ${d.teaserReadyCount ?? 0}，待生成 ${d.teaserPendingCount ?? 0}）` : ""}
           </option>
         ))}
       </select>
@@ -994,7 +988,6 @@ function EditVideoModal({
   const [title, setTitle] = useState(video.title);
   const [author, setAuthor] = useState(video.author ?? "");
   const [selectedTags, setSelectedTags] = useState(video.tags ?? []);
-  const [category, setCategory] = useState(video.category ?? "");
   const [description, setDescription] = useState(video.description ?? "");
   const [durationSec, setDurationSec] = useState(String(video.durationSeconds || 0));
   const [saving, setSaving] = useState(false);
@@ -1007,7 +1000,6 @@ function EditVideoModal({
         title: title.trim(),
         author: author.trim(),
         tags: selectedTags,
-        category: category.trim(),
         description,
         durationSeconds: Number(durationSec) || 0,
       });
@@ -1047,23 +1039,19 @@ function EditVideoModal({
         </div>
         <div className="admin-form__row">
           <div className="admin-form__label">标签</div>
-          <div className="admin-tag-picker">
+          <div className="admin-tag-picker admin-video-tag-picker">
             {availableTags.map((tag) => (
-              <label key={tag.id} className="admin-check">
+              <label key={tag.id} className="admin-check admin-video-tag-option">
                 <input
                   type="checkbox"
                   checked={selectedTags.includes(tag.label)}
                   onChange={() => setSelectedTags(toggleTag(selectedTags, tag.label))}
                 />
-                <span>{tag.label}</span>
-                <em>{tag.count}</em>
+                <span className="admin-video-tag-option__label" title={tag.label}>{tag.label}</span>
+                <em className="admin-video-tag-option__count">{tag.count}</em>
               </label>
             ))}
           </div>
-        </div>
-        <div className="admin-form__row">
-          <label htmlFor={`${idPrefix}-video-category`}>分类</label>
-          <input id={`${idPrefix}-video-category`} value={category} onChange={(e) => setCategory(e.target.value)} />
         </div>
         <div className="admin-form__row">
           <label htmlFor={`${idPrefix}-video-duration`}>时长（秒）</label>

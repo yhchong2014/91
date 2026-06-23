@@ -26,10 +26,9 @@ export default function ListingPage() {
   const [params] = useSearchParams();
   const keyword = params.get("q") ?? "";
   const tag = params.get("tag") ?? "";
-  const cat = params.get("cat") ?? "";
   const listKey = useMemo(
-    () => listingStateKey({ keyword, tag, cat }),
-    [keyword, tag, cat]
+    () => listingStateKey({ keyword, tag }),
+    [keyword, tag]
   );
   const initialState = useMemo(() => readListingState(listKey), [listKey]);
   const activeListKeyRef = useRef(listKey);
@@ -62,8 +61,6 @@ export default function ListingPage() {
       ? `搜索 "${keyword}" · 91`
       : tag
       ? `标签 ${tag} · 91`
-      : cat
-      ? `分类 ${cat} · 91`
       : "视频列表 · 91";
 
     let active = true;
@@ -73,7 +70,7 @@ export default function ListingPage() {
     } else {
       setRefreshing(true);
     }
-    fetchListing(page, tag ? PAGE_SIZE_TAG : PAGE_SIZE_DEFAULT, { q: keyword, tag, cat, sort }).then((r) => {
+    fetchListing(page, tag ? PAGE_SIZE_TAG : PAGE_SIZE_DEFAULT, { q: keyword, tag, sort }).then((r) => {
       if (!active) return;
       setItems(r.items ?? []);
       setTotal(r.total ?? 0);
@@ -84,7 +81,7 @@ export default function ListingPage() {
     return () => {
       active = false;
     };
-  }, [keyword, tag, cat, sort, page]);
+  }, [keyword, tag, sort, page]);
 
   useEffect(() => {
     const previous = window.history.scrollRestoration;
@@ -134,8 +131,6 @@ export default function ListingPage() {
     ? `搜索结果：${keyword}`
     : tag
     ? `标签：${tag}`
-    : cat && cat !== "all"
-    ? `分类：${cat}`
     : "全部视频";
 
   return (
@@ -186,12 +181,10 @@ export default function ListingPage() {
 function listingStateKey(filters: {
   keyword: string;
   tag: string;
-  cat: string;
 }): string {
   const params = new URLSearchParams();
   if (filters.keyword) params.set("q", filters.keyword);
   if (filters.tag) params.set("tag", filters.tag);
-  if (filters.cat) params.set("cat", filters.cat);
   return `${LISTING_STATE_PREFIX}${params.toString()}`;
 }
 

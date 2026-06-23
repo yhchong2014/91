@@ -529,7 +529,6 @@ export type AdminVideo = {
   favorites: number;
   comments: number;
   likes: number;
-  category: string;
   badges: string[];
   description: string;
   publishedAt: string;
@@ -584,8 +583,11 @@ export type AdminBlacklistList = {
   size: number;
 };
 
-export function listBlacklist(params: { page?: number; size?: number; keyword?: string } = {}) {
+export function listBlacklist(
+  params: { driveId?: string; page?: number; size?: number; keyword?: string } = {}
+) {
   const qs = new URLSearchParams();
+  if (params.driveId) qs.set("driveId", params.driveId);
   if (params.page) qs.set("page", String(params.page));
   if (params.size) qs.set("size", String(params.size));
   if (params.keyword) qs.set("keyword", params.keyword);
@@ -604,7 +606,6 @@ export type UpdateVideoInput = Partial<{
   title: string;
   author: string;
   tags: string[];
-  category: string;
   badges: string[];
   description: string;
   thumbnail: string;

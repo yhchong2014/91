@@ -55,7 +55,7 @@ export function TagsPage() {
     setSaving(true);
     try {
       const r = await api.createTag(cleanLabel, splitList(aliases));
-      show(`已添加标签，自动归类 ${r.classified} 个视频`, "success");
+      show(`已添加标签，自动匹配 ${r.classified} 个视频`, "success");
       setLabel("");
       setAliases("");
       await refresh();
@@ -131,14 +131,12 @@ export function TagsPage() {
     let totalVideos = 0;
     let systemCount = 0;
     let userCount = 0;
-    let collectionCount = 0;
     let legacyCount = 0;
 
     tags.forEach((t) => {
       totalVideos += t.count ?? 0;
       if (t.source === "system") systemCount++;
       else if (t.source === "user") userCount++;
-      else if (t.source === "collection") collectionCount++;
       else if (t.source === "legacy") legacyCount++;
     });
 
@@ -147,7 +145,6 @@ export function TagsPage() {
       totalVideos,
       systemCount,
       userCount,
-      collectionCount,
       legacyCount,
     };
   }, [tags]);
@@ -213,7 +210,7 @@ export function TagsPage() {
         <div>
           <div className="admin-card">
             <div className="admin-card__title">
-              <Plus size={15} /> 新增分类标签
+              <Plus size={15} /> 新增标签
             </div>
             <form
               className="admin-form"
@@ -245,7 +242,7 @@ export function TagsPage() {
                 className="admin-btn is-primary"
                 disabled={saving || !label.trim()}
               >
-                <Plus size={13} /> {saving ? "添加中..." : "添加并自动归类"}
+                <Plus size={13} /> {saving ? "添加中..." : "添加并自动匹配"}
               </button>
             </form>
           </div>
@@ -302,13 +299,6 @@ export function TagsPage() {
                 onClick={() => setFilterSource("user")}
               >
                 用户 ({stats.userCount})
-              </button>
-              <button
-                type="button"
-                className={`admin-tags-filter-tab ${filterSource === "collection" ? "is-active" : ""}`}
-                onClick={() => setFilterSource("collection")}
-              >
-                合集 ({stats.collectionCount})
               </button>
               {stats.legacyCount > 0 && (
                 <button
@@ -538,7 +528,6 @@ function splitList(s: string): string[] {
 
 function sourceLabel(source: string): string {
   if (source === "system") return "系统";
-  if (source === "collection") return "合集";
   if (source === "legacy") return "旧数据";
   return "用户";
 }

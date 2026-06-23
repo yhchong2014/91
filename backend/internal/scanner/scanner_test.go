@@ -435,7 +435,7 @@ func TestRunReplacesExistingVideoTagsWithFixedFilenameTags(t *testing.T) {
 	}
 }
 
-func TestRunAddsShortCollectionDirectoryAsTag(t *testing.T) {
+func TestRunDoesNotCreateTagFromDirectoryName(t *testing.T) {
 	ctx := context.Background()
 	cat, err := catalog.Open(t.TempDir() + "/catalog.db")
 	if err != nil {
@@ -453,91 +453,12 @@ func TestRunAddsShortCollectionDirectoryAsTag(t *testing.T) {
 			DriveID:     "drive",
 			FileID:      id,
 			Title:       "Existing",
-			Category:    "sunny",
 			PublishedAt: now,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}); err != nil {
 			t.Fatalf("seed existing sunny video: %v", err)
 		}
-	}
-
-	drv := &scannerTreeFakeDrive{
-		entries: map[string][]drives.Entry{
-			"root": {{
-				ID:    "dir-1",
-				Name:  "sunny",
-				IsDir: true,
-			}},
-			"dir-1": {{
-				ID:       "file-1",
-				ParentID: "dir-1",
-				Name:     "clip.mp4",
-				Size:     123,
-				ModTime:  now,
-			}},
-		},
-	}
-	sc := New(cat, drv, []string{".mp4"}, nil, nil)
-
-	if _, err := sc.Run(ctx, ""); err != nil {
-		t.Fatalf("scan: %v", err)
-	}
-
-	got, err := cat.GetVideo(ctx, "fake-drive-file-1")
-	if err != nil {
-		t.Fatalf("get video: %v", err)
-	}
-	if !sameStrings(got.Tags, []string{"sunny"}) {
-		t.Fatalf("tags = %#v, want sunny", got.Tags)
-	}
-}
-
-func TestRunDoesNotRecreateDeletedCollectionDirectoryTag(t *testing.T) {
-	ctx := context.Background()
-	cat, err := catalog.Open(t.TempDir() + "/catalog.db")
-	if err != nil {
-		t.Fatalf("open catalog: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := cat.Close(); err != nil {
-			t.Fatalf("close catalog: %v", err)
-		}
-	})
-	now := time.Now()
-	for _, id := range []string{"existing-1", "existing-2"} {
-		if err := cat.UpsertVideo(ctx, &catalog.Video{
-			ID:          id,
-			DriveID:     "drive",
-			FileID:      id,
-			Title:       "Existing",
-			Category:    "sunny",
-			PublishedAt: now,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}); err != nil {
-			t.Fatalf("seed existing sunny video: %v", err)
-		}
-	}
-	if label, ok, err := cat.EnsureCollectionTag(ctx, "sunny"); err != nil || !ok || label != "sunny" {
-		t.Fatalf("ensure collection = %q, %v, %v; want sunny true nil", label, ok, err)
-	}
-	tags, err := cat.ListTags(ctx)
-	if err != nil {
-		t.Fatalf("list tags: %v", err)
-	}
-	var tagID int64
-	for _, tag := range tags {
-		if tag.Label == "sunny" {
-			tagID = tag.ID
-			break
-		}
-	}
-	if tagID == 0 {
-		t.Fatal("sunny tag not found before delete")
-	}
-	if _, err := cat.DeleteTag(ctx, tagID); err != nil {
-		t.Fatalf("delete tag: %v", err)
 	}
 
 	drv := &scannerTreeFakeDrive{
@@ -569,15 +490,6 @@ func TestRunDoesNotRecreateDeletedCollectionDirectoryTag(t *testing.T) {
 	if len(got.Tags) != 0 {
 		t.Fatalf("tags = %#v, want none", got.Tags)
 	}
-	tags, err = cat.ListTags(ctx)
-	if err != nil {
-		t.Fatalf("list tags after scan: %v", err)
-	}
-	for _, tag := range tags {
-		if tag.Label == "sunny" {
-			t.Fatal("deleted collection tag was recreated during scan")
-		}
-	}
 }
 
 func TestRunMapsAVCodeDirectoryToAVTag(t *testing.T) {
@@ -598,7 +510,6 @@ func TestRunMapsAVCodeDirectoryToAVTag(t *testing.T) {
 			DriveID:     "drive",
 			FileID:      id,
 			Title:       "Existing",
-			Category:    "cc-1750027",
 			PublishedAt: now,
 			CreatedAt:   now,
 			UpdatedAt:   now,

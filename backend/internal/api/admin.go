@@ -2021,7 +2021,7 @@ func (a *AdminServer) handleAdminListVideos(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"items": items,
+		"items": mapAdminVideos(items),
 		"total": total,
 		"page":  page,
 		"size":  size,
@@ -2052,7 +2052,12 @@ func (a *AdminServer) handleListBlacklist(w http.ResponseWriter, r *http.Request
 	if size <= 0 || size > 100 {
 		size = 100
 	}
-	items, total, err := a.Catalog.ListDeletedVideos(r.Context(), q.Get("keyword"), page, size)
+	items, total, err := a.Catalog.ListDeletedVideos(r.Context(), catalog.ListParams{
+		Keyword:  q.Get("keyword"),
+		DriveID:  q.Get("driveId"),
+		Page:     page,
+		PageSize: size,
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -2135,12 +2140,102 @@ type updateVideoReq struct {
 	Title       string   `json:"title"`
 	Author      string   `json:"author"`
 	Tags        []string `json:"tags"`
-	Category    string   `json:"category"`
 	Badges      []string `json:"badges"`
 	Description string   `json:"description"`
 	Thumbnail   string   `json:"thumbnail"`
 	Quality     string   `json:"quality"`
 	DurationSec int      `json:"durationSeconds"`
+}
+
+type adminVideoDTO struct {
+	ID                string    `json:"id"`
+	DriveID           string    `json:"driveId"`
+	FileID            string    `json:"fileId"`
+	FileName          string    `json:"fileName"`
+	ContentHash       string    `json:"contentHash"`
+	SampledSHA256     string    `json:"sampledSha256"`
+	FingerprintStatus string    `json:"fingerprintStatus"`
+	FingerprintError  string    `json:"fingerprintError"`
+	ParentID          string    `json:"parentId"`
+	Title             string    `json:"title"`
+	Author            string    `json:"author"`
+	Tags              []string  `json:"tags"`
+	DurationSeconds   int       `json:"durationSeconds"`
+	Size              int64     `json:"size"`
+	Ext               string    `json:"ext"`
+	Quality           string    `json:"quality"`
+	ThumbnailURL      string    `json:"thumbnailUrl"`
+	PreviewFileID     string    `json:"previewFileId"`
+	PreviewLocal      string    `json:"previewLocal"`
+	PreviewStatus     string    `json:"previewStatus"`
+	TranscodeStatus   string    `json:"transcodeStatus"`
+	TranscodeError    string    `json:"transcodeError"`
+	TranscodedFileID  string    `json:"transcodedFileId"`
+	TranscodedSize    int64     `json:"transcodedSize"`
+	Views             int       `json:"views"`
+	LastViewedAt      time.Time `json:"lastViewedAt"`
+	Favorites         int       `json:"favorites"`
+	Comments          int       `json:"comments"`
+	Likes             int       `json:"likes"`
+	Dislikes          int       `json:"dislikes"`
+	Hidden            bool      `json:"hidden"`
+	Badges            []string  `json:"badges"`
+	Description       string    `json:"description"`
+	PublishedAt       time.Time `json:"publishedAt"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+func mapAdminVideo(v *catalog.Video) adminVideoDTO {
+	if v == nil {
+		return adminVideoDTO{}
+	}
+	return adminVideoDTO{
+		ID:                v.ID,
+		DriveID:           v.DriveID,
+		FileID:            v.FileID,
+		FileName:          v.FileName,
+		ContentHash:       v.ContentHash,
+		SampledSHA256:     v.SampledSHA256,
+		FingerprintStatus: v.FingerprintStatus,
+		FingerprintError:  v.FingerprintError,
+		ParentID:          v.ParentID,
+		Title:             v.Title,
+		Author:            v.Author,
+		Tags:              v.Tags,
+		DurationSeconds:   v.DurationSeconds,
+		Size:              v.Size,
+		Ext:               v.Ext,
+		Quality:           v.Quality,
+		ThumbnailURL:      v.ThumbnailURL,
+		PreviewFileID:     v.PreviewFileID,
+		PreviewLocal:      v.PreviewLocal,
+		PreviewStatus:     v.PreviewStatus,
+		TranscodeStatus:   v.TranscodeStatus,
+		TranscodeError:    v.TranscodeError,
+		TranscodedFileID:  v.TranscodedFileID,
+		TranscodedSize:    v.TranscodedSize,
+		Views:             v.Views,
+		LastViewedAt:      v.LastViewedAt,
+		Favorites:         v.Favorites,
+		Comments:          v.Comments,
+		Likes:             v.Likes,
+		Dislikes:          v.Dislikes,
+		Hidden:            v.Hidden,
+		Badges:            v.Badges,
+		Description:       v.Description,
+		PublishedAt:       v.PublishedAt,
+		CreatedAt:         v.CreatedAt,
+		UpdatedAt:         v.UpdatedAt,
+	}
+}
+
+func mapAdminVideos(vs []*catalog.Video) []adminVideoDTO {
+	out := make([]adminVideoDTO, 0, len(vs))
+	for _, v := range vs {
+		out = append(out, mapAdminVideo(v))
+	}
+	return out
 }
 
 func (a *AdminServer) handleUpdateVideo(w http.ResponseWriter, r *http.Request) {
@@ -2160,9 +2255,6 @@ func (a *AdminServer) handleUpdateVideo(w http.ResponseWriter, r *http.Request) 
 	}
 	if body.Author != "" {
 		v.Author = body.Author
-	}
-	if body.Category != "" {
-		v.Category = body.Category
 	}
 	if body.Badges != nil {
 		v.Badges = body.Badges
@@ -2198,7 +2290,7 @@ func (a *AdminServer) handleUpdateVideo(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, v)
+	writeJSON(w, http.StatusOK, mapAdminVideo(v))
 }
 
 func (a *AdminServer) handleDeleteVideo(w http.ResponseWriter, r *http.Request) {

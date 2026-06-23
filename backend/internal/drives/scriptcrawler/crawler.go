@@ -144,7 +144,6 @@ type Event struct {
 	DetailURL          string            `json:"detail_url,omitempty"`
 	Author             string            `json:"author,omitempty"`
 	Tags               []string          `json:"tags,omitempty"`
-	Category           string            `json:"category,omitempty"`
 	Quality            string            `json:"quality,omitempty"`
 	DurationSeconds    int               `json:"duration_seconds,omitempty"`
 	Description        string            `json:"description,omitempty"`
@@ -168,7 +167,6 @@ type Item struct {
 	DetailURL          string            `json:"detail_url,omitempty"`
 	Author             string            `json:"author,omitempty"`
 	Tags               []string          `json:"tags,omitempty"`
-	Category           string            `json:"category,omitempty"`
 	Quality            string            `json:"quality,omitempty"`
 	DurationSeconds    int               `json:"duration_seconds,omitempty"`
 	Description        string            `json:"description,omitempty"`
@@ -214,9 +212,6 @@ func (e Event) normalizedItem() Item {
 	}
 	if len(item.Tags) == 0 && len(e.Tags) > 0 {
 		item.Tags = e.Tags
-	}
-	if strings.TrimSpace(item.Category) == "" {
-		item.Category = e.Category
 	}
 	if strings.TrimSpace(item.Quality) == "" {
 		item.Quality = e.Quality
@@ -577,7 +572,6 @@ func (c *Crawler) processItem(ctx context.Context, item Item) (bool, error) {
 		Size:            size,
 		Ext:             strings.TrimPrefix(videoExt, "."),
 		Quality:         quality,
-		Category:        strings.TrimSpace(item.Category),
 		Description:     strings.TrimSpace(item.Description),
 		PreviewStatus:   previewStatus,
 		PublishedAt:     publishedAt,
@@ -1041,7 +1035,6 @@ func normalizeItemForImport(item Item) (Item, string, error) {
 	}
 	item.DetailURL = strings.TrimSpace(item.DetailURL)
 	item.Author = strings.TrimSpace(item.Author)
-	item.Category = strings.TrimSpace(item.Category)
 	item.Quality = strings.TrimSpace(item.Quality)
 	item.Description = strings.TrimSpace(item.Description)
 	item.PublishedAt = strings.TrimSpace(item.PublishedAt)

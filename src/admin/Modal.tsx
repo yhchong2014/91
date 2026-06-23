@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 type Props = {
@@ -75,7 +76,7 @@ export function Modal({ open, title, ariaLabel, onClose, children, footer, class
   }, [open]);
 
   if (!open) return null;
-  return (
+  return createPortal(
     <div className="admin-modal-backdrop">
       <div
         ref={dialogRef}
@@ -101,7 +102,8 @@ export function Modal({ open, title, ariaLabel, onClose, children, footer, class
         <div className="admin-modal__body">{children}</div>
         {footer && <div className="admin-modal__footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

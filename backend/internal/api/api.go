@@ -93,7 +93,6 @@ type VideoDTO struct {
 	Dislikes        int      `json:"dislikes"`
 	PublishedAt     string   `json:"publishedAt"`
 	Tags            []string `json:"tags,omitempty"`
-	Category        string   `json:"category,omitempty"`
 }
 
 type TagDTO struct {
@@ -293,7 +292,6 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	params := catalog.ListParams{
 		Keyword:   q.Get("q"),
 		Tag:       q.Get("tag"),
-		Category:  q.Get("cat"),
 		Sort:      sort,
 		Page:      page,
 		PageSize:  size,
@@ -909,7 +907,6 @@ func mapVideo(v *catalog.Video) VideoDTO {
 		Dislikes:        v.Dislikes,
 		PublishedAt:     v.PublishedAt.Format("2006-01-02"),
 		Tags:            tags,
-		Category:        v.Category,
 	}
 }
 

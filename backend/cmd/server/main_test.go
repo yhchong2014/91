@@ -1981,7 +1981,7 @@ func TestCleanupDuplicateVideoAssetsDeletesExactDuplicateRows(t *testing.T) {
 	if !deleted {
 		t.Fatalf("duplicate tombstone missing")
 	}
-	deletedItems, _, err := cat.ListDeletedVideos(ctx, "", 1, 10)
+	deletedItems, _, err := cat.ListDeletedVideos(ctx, catalog.ListParams{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatalf("list deleted videos: %v", err)
 	}
@@ -2081,7 +2081,7 @@ func TestCleanupDuplicateVideoAssetsDeletesNearDuplicateRowsKeepingLargest(t *te
 	if !deleted {
 		t.Fatalf("small duplicate tombstone missing")
 	}
-	deletedItems, _, err := cat.ListDeletedVideos(ctx, "", 1, 10)
+	deletedItems, _, err := cat.ListDeletedVideos(ctx, catalog.ListParams{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatalf("list deleted videos: %v", err)
 	}

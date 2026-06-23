@@ -2476,6 +2476,52 @@ func TestHandleAdminListVideosFiltersByDriveID(t *testing.T) {
 	}
 }
 
+func TestHandleAdminListVideosDoesNotExposeCategory(t *testing.T) {
+	ctx := context.Background()
+	cat, err := catalog.Open(t.TempDir() + "/catalog.db")
+	if err != nil {
+		t.Fatalf("open catalog: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := cat.Close(); err != nil {
+			t.Fatalf("close catalog: %v", err)
+		}
+	})
+
+	now := time.Now()
+	if err := cat.UpsertVideo(ctx, &catalog.Video{
+		ID:          "video-1",
+		DriveID:     "drive",
+		FileID:      "file-1",
+		Title:       "Video",
+		PublishedAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("seed video: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/videos", nil)
+	rr := httptest.NewRecorder()
+	(&AdminServer{Catalog: cat}).handleAdminListVideos(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var got struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.Items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(got.Items))
+	}
+	if _, ok := got.Items[0]["category"]; ok {
+		t.Fatalf("admin video response exposed category: %#v", got.Items[0])
+	}
+}
+
 func TestHandleAdminListVideosPaginates(t *testing.T) {
 	ctx := context.Background()
 	cat, err := catalog.Open(t.TempDir() + "/catalog.db")

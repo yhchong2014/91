@@ -239,7 +239,10 @@ test("crawler management is a separate admin section", () => {
   assert.match(adminLayoutSource, /to="\/admin\/crawlers"/);
   assert.match(adminLayoutSource, /admin-nav__title">爬虫管理/);
   assert.match(adminLayoutSource, /admin-nav__icon"><SpiderIcon size=\{16\} \/>/);
-  assert.match(appSource, /path="crawlers" element=\{<CrawlersPage \/>/);
+  assert.match(
+    appSource,
+    /path="crawlers"[\s\S]*<PageSuspense>[\s\S]*<CrawlersPage \/>[\s\S]*<\/PageSuspense>/
+  );
   assert.match(crawlerPageSource, /export function CrawlersPage/);
   assert.match(crawlerPageSource, /SpiderIcon/);
   assert.match(crawlerPageSource, /添加爬虫/);
@@ -305,6 +308,18 @@ test("crawler management is a separate admin section", () => {
   assert.match(apiSource, /id\?: string/);
   assert.match(apiSource, /new FormData\(\)/);
   assert.doesNotMatch(driveFormSource, /scriptcrawler/);
+});
+
+test("admin shell stays mounted while lazy admin pages load", () => {
+  assert.match(appSource, /import \{ AdminLayout \} from "@\/admin\/AdminLayout";/);
+  assert.doesNotMatch(appSource, /const AdminLayout\s*=\s*lazy/);
+  assert.doesNotMatch(appSource, /<Suspense fallback=\{null\}>\s*<Routes>/);
+  assert.match(appSource, /function PageSuspense\(\{ children \}: \{ children: ReactNode \}\)/);
+  assert.match(appSource, /path="\/admin"[\s\S]*<AdminLayout \/>/);
+  assert.match(
+    appSource,
+    /path="drives"[\s\S]*<PageSuspense>[\s\S]*<DrivesPage \/>[\s\S]*<\/PageSuspense>/
+  );
 });
 
 test("drive cards use configured abbreviations and visible fallback icon colors", () => {

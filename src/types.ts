@@ -19,7 +19,6 @@ export type VideoItem = {
   publishedAt: string;
   rating?: number;
   tags?: string[];
-  category?: string;
 };
 
 export type AuthorProfile = {
@@ -65,15 +64,9 @@ export type TagItem = {
   count?: number;
 };
 
-export type CategoryItem = {
-  id: string;
-  label: string;
-  href: string;
-};
-
 export type PromoItem = {
   id: string;
-  kind: "channel" | "collection" | "event";
+  kind: "channel" | "topic" | "event";
   label: string;
   title: string;
   meta?: string;

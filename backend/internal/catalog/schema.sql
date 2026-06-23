@@ -32,7 +32,6 @@ CREATE TABLE IF NOT EXISTS videos (
     comments         INTEGER DEFAULT 0,
     likes            INTEGER DEFAULT 0,
     dislikes         INTEGER DEFAULT 0,
-    category         TEXT,
     hidden           INTEGER DEFAULT 0,          -- 1 = hidden from public display
     tags_manual      INTEGER DEFAULT 0,          -- 1 = user explicitly curated tags
     badges           TEXT,                      -- JSON array

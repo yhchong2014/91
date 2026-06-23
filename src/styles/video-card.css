@@ -417,28 +417,40 @@
 
 .video-meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px var(--space-2);
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
   margin-top: 4px;
   padding: 0 4px;
   font-size: var(--font-xs);
   color: var(--text-faint);
+  min-width: 0;
+  overflow: hidden;
 }
 
-.video-meta__author {
-  color: var(--text-muted);
-  font-weight: var(--weight-medium);
+.video-meta > span {
+  min-width: 0;
+  white-space: nowrap;
 }
 
-.video-meta__author::after {
+.video-meta > span + span::before {
   content: "·";
   color: var(--text-disabled);
   margin: 0 6px;
 }
 
-.video-meta > span:last-child::after {
-  content: "";
-  margin: 0;
+.video-meta__author {
+  flex: 0 1 auto;
+  max-width: min(100%, 18em);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+}
+
+.video-meta__views,
+.video-meta__date {
+  flex: 0 0 auto;
 }
 
 /* 卡片底部源信息（compact 视图用） */
@@ -647,7 +659,7 @@
   }
 
   /* 移动端隐藏发布时间，保持卡片更紧凑 */
-  .video-meta span:nth-child(n + 3) {
+  .video-meta__date {
     display: none;
   }
 

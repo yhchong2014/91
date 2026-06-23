@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { VideoActions } from "@/components/VideoActions";
@@ -13,11 +13,14 @@ import {
   recordView,
   updateVideoTags,
 } from "@/data/videos";
+import { resolveVideoReturnPath } from "@/lib/videoReturnPath";
 import type { TagItem, VideoDetail } from "@/types";
 
 export default function VideoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = location.state as { from?: unknown } | null;
   const [detail, setDetail] = useState<VideoDetail | null>(null);
   const [tags, setTags] = useState<TagItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,7 +88,8 @@ export default function VideoDetailPage() {
     setDeleteError("");
     try {
       await deleteVideo(detail.id, { deleteSource });
-      navigate("/list", { replace: true });
+      const from = typeof locationState?.from === "string" ? locationState.from : null;
+      navigate(resolveVideoReturnPath(from), { replace: true });
     } catch {
       setDeleteError(
         deleteSource

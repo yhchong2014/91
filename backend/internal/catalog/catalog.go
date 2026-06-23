@@ -83,7 +83,6 @@ type Video struct {
 	Comments         int       `json:"comments"`
 	Likes            int       `json:"likes"`
 	Dislikes         int       `json:"dislikes"`
-	Category         string    `json:"category"`
 	Hidden           bool      `json:"hidden"`
 	Badges           []string  `json:"badges"`
 	Description      string    `json:"description"`
@@ -112,16 +111,16 @@ func (c *Catalog) UpsertVideo(ctx context.Context, v *Video) error {
 INSERT INTO videos (
   id, drive_id, file_id, file_name, content_hash, sampled_sha256, fingerprint_status, fingerprint_error, parent_id, title, author, tags,
   duration_seconds, size_bytes, ext, quality, thumbnail_url, thumbnail_status,
-  preview_file_id, preview_local, preview_status,
-  views, last_viewed_at, favorites, comments, likes, dislikes,
-  category, hidden, badges, description, published_at, created_at, updated_at
-) VALUES (
-  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-  ?, ?, ?, ?, ?, CASE WHEN COALESCE(?, '') != '' THEN 'ready' ELSE 'pending' END,
-  ?, ?, ?,
-  ?, ?, ?, ?, ?, ?,
-  ?, ?, ?, ?, ?, ?, ?
-)
+	  preview_file_id, preview_local, preview_status,
+	  views, last_viewed_at, favorites, comments, likes, dislikes,
+	  hidden, badges, description, published_at, created_at, updated_at
+	) VALUES (
+	  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+	  ?, ?, ?, ?, ?, CASE WHEN COALESCE(?, '') != '' THEN 'ready' ELSE 'pending' END,
+	  ?, ?, ?,
+	  ?, ?, ?, ?, ?, ?,
+	  ?, ?, ?, ?, ?, ?
+	)
 ON CONFLICT(id) DO UPDATE SET
   file_name       = CASE
                       WHEN excluded.file_name != '' THEN excluded.file_name
@@ -162,16 +161,15 @@ ON CONFLICT(id) DO UPDATE SET
                       WHEN COALESCE(excluded.thumbnail_url, '') != '' THEN 'ready'
                       ELSE videos.thumbnail_status
                     END,
-  category        = excluded.category,
-  badges          = excluded.badges,
-  description     = excluded.description,
+	  badges          = excluded.badges,
+	  description     = excluded.description,
   updated_at      = excluded.updated_at
 `,
 		v.ID, v.DriveID, v.FileID, v.FileName, v.ContentHash, v.SampledSHA256, fingerprintStatus, v.FingerprintError, v.ParentID, v.Title, v.Author, string(tagsJSON),
 		v.DurationSeconds, v.Size, v.Ext, v.Quality, v.ThumbnailURL, v.ThumbnailURL,
 		v.PreviewFileID, v.PreviewLocal, nullableStatus(v.PreviewStatus),
 		v.Views, unixMilliOrZero(v.LastViewedAt), v.Favorites, v.Comments, v.Likes, v.Dislikes,
-		v.Category, boolToInt(v.Hidden), string(badgesJSON), v.Description,
+		boolToInt(v.Hidden), string(badgesJSON), v.Description,
 		v.PublishedAt.UnixMilli(), v.CreatedAt.UnixMilli(), v.UpdatedAt.UnixMilli(),
 	)
 	if err != nil {
@@ -449,7 +447,6 @@ type VideoMetaPatch struct {
 	ThumbnailStatus        string
 	ResetThumbnailFailures bool
 	DurationSeconds        int
-	Category               string
 	ContentHash            string
 	FileName               string
 	Title                  string
@@ -492,10 +489,6 @@ func (c *Catalog) UpdateVideoMeta(ctx context.Context, id string, p VideoMetaPat
 	if p.DurationSeconds > 0 {
 		parts = append(parts, "duration_seconds = ?")
 		args = append(args, p.DurationSeconds)
-	}
-	if p.Category != "" {
-		parts = append(parts, "category = ?")
-		args = append(args, p.Category)
 	}
 	if p.ContentHash != "" {
 		parts = append(parts, "content_hash = ?")
@@ -564,35 +557,6 @@ func (c *Catalog) IncrementThumbnailFailures(ctx context.Context, id string) (in
 		return 0, err
 	}
 	return failures, nil
-}
-
-// ListCategories 聚合所有 category，按视频数降序
-type CategoryStat struct {
-	Category string
-	Count    int
-}
-
-func (c *Catalog) ListCategories(ctx context.Context) ([]CategoryStat, error) {
-	rows, err := c.db.QueryContext(ctx,
-		`SELECT COALESCE(category, '') AS c, COUNT(*) AS cnt
-		 FROM videos
-		 WHERE category IS NOT NULL AND category != ''
-		   AND COALESCE(hidden, 0) = 0
-		 GROUP BY c
-		 ORDER BY cnt DESC, c ASC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []CategoryStat
-	for rows.Next() {
-		var s CategoryStat
-		if err := rows.Scan(&s.Category, &s.Count); err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, nil
 }
 
 type TagStat struct {
@@ -964,7 +928,7 @@ SELECT id, drive_id, file_id, COALESCE(content_hash, ''), COALESCE(file_name, ''
 	}
 	v.ContentHash = normalizeContentHash(v.ContentHash)
 
-	// 先记录这次视频关联的 tag_id，便于事务末尾清理孤儿 collection 标签。
+	// 先记录这次视频关联的 tag_id，便于事务末尾清理旧版本遗留的孤儿 collection 标签。
 	tagIDs, err := collectVideoTagIDs(ctx, tx, id)
 	if err != nil {
 		return err
@@ -1008,7 +972,7 @@ func (c *Catalog) DeleteVideo(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback()
 
-	// 先记录这次视频关联的 tag_id，便于事务末尾清理孤儿 collection 标签
+	// 先记录这次视频关联的 tag_id，便于事务末尾清理旧版本遗留的孤儿 collection 标签。
 	tagIDs, err := collectVideoTagIDs(ctx, tx, id)
 	if err != nil {
 		return err
@@ -1025,7 +989,7 @@ func (c *Catalog) DeleteVideo(ctx context.Context, id string) error {
 		return sql.ErrNoRows
 	}
 
-	// collection 标签是 scanner 按目录名机器生成的；视频删完后若不再被引用就一起回收。
+	// collection 标签来自旧版本按目录名生成的标签；视频删完后若不再被引用就一起回收。
 	// system / user / auto / legacy 不在此处删除，避免破坏管理员手动维护的标签语义。
 	if err := pruneOrphanCollectionTagsByID(ctx, tx, tagIDs); err != nil {
 		return err
@@ -1047,19 +1011,23 @@ type DeletedVideo struct {
 }
 
 // ListDeletedVideos 分页列出黑名单视频，按拉黑时间倒序。
-// keyword 非空时按文件名模糊匹配。
-func (c *Catalog) ListDeletedVideos(ctx context.Context, keyword string, page, size int) ([]*DeletedVideo, int, error) {
-	if size <= 0 {
-		size = 50
+// Keyword 非空时按文件名模糊匹配，DriveID 非空时限定来源网盘。
+func (c *Catalog) ListDeletedVideos(ctx context.Context, p ListParams) ([]*DeletedVideo, int, error) {
+	if p.PageSize <= 0 {
+		p.PageSize = 50
 	}
-	if page <= 0 {
-		page = 1
+	if p.Page <= 0 {
+		p.Page = 1
 	}
 	var where []string
 	var args []any
-	if kw := strings.TrimSpace(keyword); kw != "" {
+	if kw := strings.TrimSpace(p.Keyword); kw != "" {
 		where = append(where, "file_name LIKE ?")
 		args = append(args, "%"+kw+"%")
+	}
+	if driveID := strings.TrimSpace(p.DriveID); driveID != "" {
+		where = append(where, "drive_id = ?")
+		args = append(args, driveID)
 	}
 	whereSQL := ""
 	if len(where) > 0 {
@@ -1071,13 +1039,13 @@ func (c *Catalog) ListDeletedVideos(ctx context.Context, keyword string, page, s
 		return nil, 0, err
 	}
 
-	offset := (page - 1) * size
+	offset := (p.Page - 1) * p.PageSize
 	rows, err := c.db.QueryContext(ctx,
 		`SELECT id, COALESCE(drive_id, ''), COALESCE(file_id, ''), COALESCE(file_name, ''), COALESCE(size_bytes, 0), COALESCE(reason, ''), deleted_at
 		   FROM deleted_videos`+whereSQL+`
 		  ORDER BY deleted_at DESC
 		  LIMIT ? OFFSET ?`,
-		append(args, size, offset)...)
+		append(args, p.PageSize, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1450,7 +1418,6 @@ type ListParams struct {
 	Keyword               string
 	DriveID               string
 	Tag                   string
-	Category              string
 	Sort                  string // latest | hot | recent
 	ThumbnailReadyOnly    bool
 	PreferReadyThumbnails bool
@@ -1481,10 +1448,6 @@ func (c *Catalog) ListVideos(ctx context.Context, p ListParams) ([]*Video, int, 
 	if p.Tag != "" {
 		where = append(where, videoMatchesTagLabelSQL("videos"))
 		args = append(args, p.Tag)
-	}
-	if p.Category != "" && p.Category != "all" {
-		where = append(where, "category = ?")
-		args = append(args, p.Category)
 	}
 	if p.ThumbnailReadyOnly {
 		where = append(where, "COALESCE(thumbnail_url, '') != ''")
@@ -2299,11 +2262,11 @@ COALESCE(sampled_sha256, ''), COALESCE(fingerprint_status, 'pending'), COALESCE(
 COALESCE(parent_id, ''), title, COALESCE(author, ''), COALESCE(tags, '[]'),
 duration_seconds, size_bytes, COALESCE(ext, ''), COALESCE(quality, ''), COALESCE(thumbnail_url, ''),
 COALESCE(preview_file_id, ''), COALESCE(preview_local, ''), COALESCE(preview_status, 'pending'),
-COALESCE(transcode_status, ''), COALESCE(transcode_error, ''), COALESCE(transcoded_file_id, ''), COALESCE(transcoded_size, 0),
-views, COALESCE(last_viewed_at, 0), favorites, comments, likes, dislikes,
-COALESCE(category, ''), COALESCE(hidden, 0), COALESCE(badges, '[]'), COALESCE(description, ''),
-published_at, created_at, updated_at
-`
+	COALESCE(transcode_status, ''), COALESCE(transcode_error, ''), COALESCE(transcoded_file_id, ''), COALESCE(transcoded_size, 0),
+	views, COALESCE(last_viewed_at, 0), favorites, comments, likes, dislikes,
+	COALESCE(hidden, 0), COALESCE(badges, '[]'), COALESCE(description, ''),
+	published_at, created_at, updated_at
+	`
 
 const activeDriveWhereSQL = `(videos.drive_id = 'local-upload'
 	OR EXISTS (
@@ -2373,7 +2336,7 @@ func scanVideo(row rowScanner) (*Video, error) {
 		&v.PreviewFileID, &v.PreviewLocal, &v.PreviewStatus,
 		&v.TranscodeStatus, &v.TranscodeError, &v.TranscodedFileID, &v.TranscodedSize,
 		&v.Views, &lastViewedAt, &v.Favorites, &v.Comments, &v.Likes, &v.Dislikes,
-		&v.Category, &hidden, &badgesJSON, &v.Description,
+		&hidden, &badgesJSON, &v.Description,
 		&publishedAt, &createdAt, &updatedAt,
 	)
 	if err != nil {

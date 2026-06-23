@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import type { PreviewState, VideoItem } from "@/types";
 import { formatCount } from "@/lib/format";
 import { previewController } from "@/lib/previewController";
@@ -8,6 +8,7 @@ import {
   shouldStartInstantPreview,
 } from "@/lib/previewIntent";
 import { useInViewport } from "@/lib/useInViewport";
+import { resolveVideoReturnPath, routeToPath } from "@/lib/videoReturnPath";
 import { PreviewVideo } from "./PreviewVideo";
 
 type Props = {
@@ -66,6 +67,12 @@ function RecommendedItem({ video }: { video: VideoItem }) {
 
   const activeId = useActivePreviewId();
   const inView = useInViewport(rootRef);
+  const location = useLocation();
+  const locationState = location.state as { from?: unknown } | null;
+  const returnPath =
+    typeof locationState?.from === "string"
+      ? resolveVideoReturnPath(locationState.from)
+      : resolveVideoReturnPath(routeToPath(location));
 
   // 全局预览换卡时立即清理
   useEffect(() => {
@@ -196,6 +203,7 @@ function RecommendedItem({ video }: { video: VideoItem }) {
     >
       <Link
         to={video.href}
+        state={{ from: returnPath }}
         className="vd-rail__link"
         onClickCapture={handleClickCapture}
       >

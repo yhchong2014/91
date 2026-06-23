@@ -114,7 +114,7 @@ export function TagCloud() {
   );
 
   return (
-    <div className="tag-cloud-container" aria-label="热门分类">
+    <div className="tag-cloud-container" aria-label="热门标签">
       <div className="tag-cloud__grid" ref={containerRef}>
         <div className="tag-cloud__row">
           {row1.map(renderTag)}

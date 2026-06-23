@@ -327,8 +327,8 @@ func TestScannerPersistsLocalStorageSTRM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get video: %v", err)
 	}
-	if got.Ext != "strm" || got.FileID != fileID || got.Category != "collection" {
-		t.Fatalf("video = %#v, want local strm video in collection", got)
+	if got.Ext != "strm" || got.FileID != fileID || got.ParentID != encodeRel("collection") {
+		t.Fatalf("video = %#v, want local strm video under collection", got)
 	}
 }
 
@@ -366,8 +366,8 @@ func TestScannerPersistsLocalStorageVideo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get video: %v", err)
 	}
-	if got.DriveID != "local" || got.FileID != fileID || got.Category != "collection" {
-		t.Fatalf("video = %#v, want local drive video in collection", got)
+	if got.DriveID != "local" || got.FileID != fileID || got.ParentID != encodeRel("collection") {
+		t.Fatalf("video = %#v, want local drive video under collection", got)
 	}
 }
 

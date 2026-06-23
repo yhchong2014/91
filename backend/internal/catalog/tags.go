@@ -84,6 +84,12 @@ func (c *Catalog) migrate(ctx context.Context) error {
 	if err := c.addColumnIfMissing(ctx, "videos", "transcoded_size", "INTEGER DEFAULT 0"); err != nil {
 		return err
 	}
+	if err := c.dropColumnIfExists(ctx, "videos", "category"); err != nil {
+		return err
+	}
+	if err := c.ensureBaseVideoIndexes(ctx); err != nil {
+		return err
+	}
 	// drives.teaser_enabled：每盘预览视频开关，替代旧的全局 preview.enabled。
 	// 升级路径：直接让 ALTER TABLE 的 DEFAULT 1 兜底 —— 每个现存 drive 都默认开启，
 	// 不读旧的 settings.preview.enabled 字段。这样老用户即便之前关过全局开关，
@@ -179,9 +185,6 @@ CREATE TABLE IF NOT EXISTS deleted_videos (
 	if err := c.collapseAVCodeTags(ctx); err != nil {
 		return err
 	}
-	if err := c.createCollectionTagsFromCategories(ctx); err != nil {
-		return err
-	}
 	if err := c.classifySystemTags(ctx); err != nil {
 		return err
 	}
@@ -206,6 +209,172 @@ CREATE TABLE IF NOT EXISTS deleted_videos (
 func (c *Catalog) addColumnIfMissing(ctx context.Context, table, column, definition string) error {
 	_, err := c.addColumnIfMissingReportNew(ctx, table, column, definition)
 	return err
+}
+
+func (c *Catalog) dropColumnIfExists(ctx context.Context, table, column string) error {
+	rows, err := c.db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if strings.EqualFold(name, column) {
+			found = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	if _, err = c.db.ExecContext(ctx, `ALTER TABLE `+table+` DROP COLUMN `+column); err == nil {
+		return nil
+	}
+	if table == "videos" && strings.EqualFold(column, "category") {
+		log.Printf("[catalog] native drop column videos.category failed, rebuilding videos table without category: %v", err)
+		return c.rebuildVideosTableWithoutCategory(ctx)
+	}
+	return err
+}
+
+func (c *Catalog) ensureBaseVideoIndexes(ctx context.Context) error {
+	for _, stmt := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_videos_drive ON videos(drive_id, file_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_videos_pub ON videos(published_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_videos_views ON videos(views DESC)`,
+	} {
+		if _, err := c.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+var currentVideoColumnNames = []string{
+	"id",
+	"drive_id",
+	"file_id",
+	"file_name",
+	"content_hash",
+	"sampled_sha256",
+	"fingerprint_status",
+	"fingerprint_error",
+	"parent_id",
+	"title",
+	"author",
+	"tags",
+	"duration_seconds",
+	"size_bytes",
+	"ext",
+	"quality",
+	"thumbnail_url",
+	"thumbnail_status",
+	"thumbnail_failures",
+	"preview_file_id",
+	"preview_local",
+	"preview_status",
+	"transcode_status",
+	"transcode_error",
+	"transcoded_file_id",
+	"transcoded_size",
+	"views",
+	"last_viewed_at",
+	"favorites",
+	"comments",
+	"likes",
+	"dislikes",
+	"hidden",
+	"tags_manual",
+	"badges",
+	"description",
+	"published_at",
+	"created_at",
+	"updated_at",
+}
+
+const createVideosWithoutCategorySQL = `
+CREATE TABLE videos_category_drop_new (
+    id                 TEXT PRIMARY KEY,
+    drive_id           TEXT NOT NULL,
+    file_id            TEXT NOT NULL,
+    file_name          TEXT DEFAULT '',
+    content_hash       TEXT DEFAULT '',
+    sampled_sha256     TEXT DEFAULT '',
+    fingerprint_status TEXT DEFAULT 'pending',
+    fingerprint_error  TEXT DEFAULT '',
+    parent_id          TEXT,
+    title              TEXT NOT NULL,
+    author             TEXT,
+    tags               TEXT,
+    duration_seconds   INTEGER DEFAULT 0,
+    size_bytes         INTEGER DEFAULT 0,
+    ext                TEXT,
+    quality            TEXT,
+    thumbnail_url      TEXT,
+    thumbnail_status   TEXT DEFAULT 'pending',
+    thumbnail_failures INTEGER DEFAULT 0,
+    preview_file_id    TEXT,
+    preview_local      TEXT,
+    preview_status     TEXT DEFAULT 'pending',
+    transcode_status   TEXT DEFAULT '',
+    transcode_error    TEXT DEFAULT '',
+    transcoded_file_id TEXT DEFAULT '',
+    transcoded_size    INTEGER DEFAULT 0,
+    views              INTEGER DEFAULT 0,
+    last_viewed_at     INTEGER DEFAULT 0,
+    favorites          INTEGER DEFAULT 0,
+    comments           INTEGER DEFAULT 0,
+    likes              INTEGER DEFAULT 0,
+    dislikes           INTEGER DEFAULT 0,
+    hidden             INTEGER DEFAULT 0,
+    tags_manual        INTEGER DEFAULT 0,
+    badges             TEXT,
+    description        TEXT,
+    published_at       INTEGER NOT NULL,
+    created_at         INTEGER NOT NULL,
+    updated_at         INTEGER NOT NULL
+)`
+
+func (c *Catalog) rebuildVideosTableWithoutCategory(ctx context.Context) error {
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DROP TABLE IF EXISTS videos_category_drop_new`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, createVideosWithoutCategorySQL); err != nil {
+		return err
+	}
+	cols := strings.Join(currentVideoColumnNames, ", ")
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO videos_category_drop_new (`+cols+`) SELECT `+cols+` FROM videos`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DROP TABLE videos`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE videos_category_drop_new RENAME TO videos`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // addColumnIfMissingReportNew 与 addColumnIfMissing 同步，但额外返回 added=true 表示
@@ -492,61 +661,6 @@ WHERE COALESCE(tags, '') NOT IN ('', '[]', 'null')
 			if err := c.syncVideoTagsJSON(ctx, videoID, false); err != nil {
 				return err
 			}
-		}
-	}
-	return nil
-}
-
-func (c *Catalog) createCollectionTagsFromCategories(ctx context.Context) error {
-	rows, err := c.db.QueryContext(ctx, `
-SELECT category, COUNT(*) FROM videos
-WHERE COALESCE(category, '') != ''
-GROUP BY category`)
-	if err != nil {
-		return err
-	}
-	type categoryStat struct {
-		category string
-		count    int
-	}
-	var categories []categoryStat
-	for rows.Next() {
-		var stat categoryStat
-		if err := rows.Scan(&stat.category, &stat.count); err != nil {
-			return err
-		}
-		categories = append(categories, stat)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, stat := range categories {
-		if isAVCodePollutedLabel(stat.category) {
-			if _, err := c.ensureTag(ctx, avTagLabel, fixedtags.AliasesFor(avTagLabel), "system"); err != nil {
-				return err
-			}
-			if err := c.addTagToVideosByCategory(ctx, stat.category, avTagLabel, "auto"); err != nil {
-				return err
-			}
-			continue
-		}
-		if stat.count < 3 {
-			continue
-		}
-		if !LooksLikeCollectionTag(stat.category) {
-			continue
-		}
-		if c.tagDeleted(ctx, stat.category) {
-			continue
-		}
-		if _, err := c.ensureTag(ctx, stat.category, nil, "collection"); err != nil {
-			return err
-		}
-		if err := c.addCollectionTagToVideos(ctx, stat.category); err != nil {
-			return err
 		}
 	}
 	return nil
@@ -845,41 +959,6 @@ func (c *Catalog) MatchTags(ctx context.Context, text string) ([]string, error) 
 	return sortLabelsByTagOrder(tags, uniqueStrings(out)), nil
 }
 
-func (c *Catalog) EnsureCollectionTag(ctx context.Context, label string) (string, bool, error) {
-	label = cleanTagLabel(label)
-	if isAVCodePollutedLabel(label) {
-		if _, err := c.ensureTag(ctx, avTagLabel, fixedtags.AliasesFor(avTagLabel), "system"); err != nil {
-			return "", false, err
-		}
-		if err := c.addTagToVideosByCategory(ctx, label, avTagLabel, "auto"); err != nil {
-			return "", false, err
-		}
-		return avTagLabel, true, nil
-	}
-	if !LooksLikeCollectionTag(label) {
-		return "", false, nil
-	}
-	if c.tagDeleted(ctx, label) {
-		return "", false, nil
-	}
-	if !c.tagExists(ctx, label) {
-		count, err := c.categoryVideoCount(ctx, label)
-		if err != nil {
-			return "", false, err
-		}
-		if count < 2 {
-			return "", false, nil
-		}
-	}
-	if _, err := c.ensureTag(ctx, label, nil, "collection"); err != nil {
-		return "", false, err
-	}
-	if err := c.addCollectionTagToVideos(ctx, label); err != nil {
-		return "", false, err
-	}
-	return label, true, nil
-}
-
 func (c *Catalog) ensureTag(ctx context.Context, label string, aliases []string, source string) (Tag, error) {
 	label = cleanTagLabel(label)
 	if label == "" {
@@ -932,7 +1011,7 @@ func (c *Catalog) classifyTag(ctx context.Context, tag Tag) (int, error) {
 		return 0, err
 	}
 	rows, err := c.db.QueryContext(ctx, `
-SELECT id, title, COALESCE(author, ''), COALESCE(category, ''), COALESCE(tags_manual, 0)
+SELECT id, title, COALESCE(author, ''), COALESCE(tags_manual, 0)
 FROM videos`)
 	if err != nil {
 		return 0, err
@@ -941,15 +1020,15 @@ FROM videos`)
 
 	classified := 0
 	for rows.Next() {
-		var videoID, title, author, category string
+		var videoID, title, author string
 		var manual int
-		if err := rows.Scan(&videoID, &title, &author, &category, &manual); err != nil {
+		if err := rows.Scan(&videoID, &title, &author, &manual); err != nil {
 			return 0, err
 		}
 		if manual == 1 {
 			continue
 		}
-		matcher := normalizeTagText(title + " " + author + " " + category)
+		matcher := normalizeTagText(title + " " + author)
 		if !matcher.contains(tag.Label) {
 			matchedAlias := false
 			for _, alias := range tag.Aliases {
@@ -1079,54 +1158,6 @@ func (c *Catalog) insertVideoTag(ctx context.Context, videoID string, tagID int6
 		`INSERT OR IGNORE INTO video_tags (video_id, tag_id, source, created_at) VALUES (?, ?, ?, ?)`,
 		videoID, tagID, source, time.Now().UnixMilli())
 	return err
-}
-
-func (c *Catalog) addCollectionTagToVideos(ctx context.Context, category string) error {
-	return c.addTagToVideosByCategory(ctx, category, category, "auto")
-}
-
-func (c *Catalog) addTagToVideosByCategory(ctx context.Context, category, label, source string) error {
-	tag, err := c.getTagByLabel(ctx, label)
-	if err != nil {
-		return err
-	}
-	rows, err := c.db.QueryContext(ctx, `
-SELECT v.id
-  FROM videos v
- WHERE v.category = ?
-   AND COALESCE(v.tags_manual, 0) = 0
-   AND NOT EXISTS (
-	 SELECT 1
-	   FROM video_tags vt
-	  WHERE vt.video_id = v.id
-	    AND vt.tag_id = ?
-   )`, category, tag.ID)
-	if err != nil {
-		return err
-	}
-	var videoIDs []string
-	for rows.Next() {
-		var videoID string
-		if err := rows.Scan(&videoID); err != nil {
-			return err
-		}
-		videoIDs = append(videoIDs, videoID)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, videoID := range videoIDs {
-		if err := c.insertVideoTag(ctx, videoID, tag.ID, source); err != nil {
-			return err
-		}
-		if err := c.syncVideoTagsJSON(ctx, videoID, false); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (c *Catalog) collapseAVCodeTags(ctx context.Context) error {
@@ -1318,12 +1349,6 @@ func (c *Catalog) restoreDeletedTag(ctx context.Context, label string) error {
 	return err
 }
 
-func (c *Catalog) categoryVideoCount(ctx context.Context, category string) (int, error) {
-	var count int
-	err := c.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM videos WHERE category = ?`, category).Scan(&count)
-	return count, err
-}
-
 func (c *Catalog) getTagByLabelTx(ctx context.Context, tx *sql.Tx, label string) (Tag, error) {
 	row := tx.QueryRowContext(ctx,
 		`SELECT id, label, aliases, source, 0 FROM tags WHERE label = ? COLLATE NOCASE`,
@@ -1473,46 +1498,6 @@ func isShortASCIIWord(s string) bool {
 	return true
 }
 
-func LooksLikeCollectionTag(label string) bool {
-	label = cleanTagLabel(label)
-	if label == "" {
-		return false
-	}
-	if isAVCodePollutedLabel(label) {
-		return false
-	}
-	runes := []rune(label)
-	if len(runes) < 2 || len(runes) > 24 {
-		return false
-	}
-	lower := strings.ToLower(label)
-	blocked := map[string]bool{
-		"v": true, "pv": true, "my pack": true, "my upload": true,
-		"视频": true, "视频1": true, "第一直播": true, "男人必备": true,
-		"瑟女聚集地": true, "成人色游": true, "ai女友": true,
-	}
-	if blocked[lower] {
-		return false
-	}
-	hasLetter := false
-	for _, r := range label {
-		if unicode.IsLetter(r) {
-			hasLetter = true
-			break
-		}
-	}
-	if !hasLetter {
-		return false
-	}
-	for _, r := range label {
-		switch r {
-		case '，', '。', '！', '？', '；', '、', '：', '~', '～':
-			return false
-		}
-	}
-	return true
-}
-
 func IsAVCode(label string) bool {
 	label = cleanTagLabel(label)
 	if label == "" {
@@ -1594,9 +1579,7 @@ func sortLabelsByTagOrder(tags []Tag, labels []string) []string {
 	return labels
 }
 
-// pruneOrphanCollectionTags 删除所有 source='collection' 且不再被任何 video_tags 引用的标签。
-// 在 migrate 末尾调用，相当于启动时自愈：之前 DeleteVideo 没顺带清理留下的孤儿，会在重启时被收回。
-// 只动 collection：system 是固定标签需保留；user 是管理员手动建的；auto/legacy 默认有视频在引用。
+// pruneOrphanCollectionTags 删除旧版本生成的 source='collection' 孤儿标签。
 func (c *Catalog) pruneOrphanCollectionTags(ctx context.Context) error {
 	_, err := c.db.ExecContext(ctx, `
 DELETE FROM tags
@@ -1605,8 +1588,7 @@ DELETE FROM tags
 	return err
 }
 
-// pruneOrphanCollectionTagsByID 在事务里检查一组候选 tag_id，删除其中
-// source='collection' 且已经没有视频引用的标签。供 DeleteVideo 调用。
+// pruneOrphanCollectionTagsByID 在事务里检查并删除旧版本生成的孤儿 collection 标签。
 func pruneOrphanCollectionTagsByID(ctx context.Context, tx *sql.Tx, tagIDs []int64) error {
 	for _, tagID := range tagIDs {
 		var src string
