@@ -16,7 +16,6 @@
   <a href="#许可证">许可证</a>
 </p>
 
----
 
 ## 功能特性
 
@@ -25,7 +24,6 @@
 - **封面 & 预览片段** — 自动为每个视频生成封面图和预览片段，首页快速选片
 - **爬虫脚本** — 项目支持导入自定义脚本，但是有一些规范，具体可以参考 [SpiderFor91](https://github.com/Just-Spider/SpiderFor91)，项目不再内置任何爬虫脚本
 - **短视频模式** — 一键切换抖音风格，沉浸刷片
----
 
 ## 预览图
 
@@ -46,8 +44,6 @@
 <p align="center">
   <img width="1284" height="1134" alt="手机端" src="https://github.com/user-attachments/assets/bdb7a86c-a4e5-483e-a307-e02c0bb34dac" />
 </p>
-
----
 
 ## 快速开始
 
@@ -79,56 +75,26 @@ sudo bash install.sh
 91 stop       # 停止服务
 ```
 
-> `video-site-91` 为等效别名，两者可互换使用。
-
-### 使用 Nginx 反向代理
-
-如果你想用域名访问，或在服务器前面套一层 Nginx，可以把 Nginx 反代到前端端口 `9191`：
-
-```nginx
-server {
-    listen 80;
-    server_name example.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:9191;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-登录失败 3 次后会永久封禁来源 IP，只能在后台用户管理里手动解除。后端只信任来自本机代理的 `X-Real-IP` / `X-Forwarded-For`，所以 Nginx 必须按上面的方式传递真实客户端 IP。
-
-单机 Nginx 反代时，不建议使用 `$proxy_add_x_forwarded_for`。直接使用 `$remote_addr` 可以避免客户端伪造 `X-Forwarded-For` 干扰封禁判断。
-
 **已部署用户升级：**
 
 ```bash
 91 update
 ```
 
-升级会保留现有 `config.yaml`、数据库、封面、预览、上传文件和爬虫数据。脚本会自动安装或检查 `ffmpeg` / `ffprobe` 等运行依赖，并在新版本启动失败时回滚到升级前文件。
+### 使用 Nginx 反向代理注意
+nginx配置中需要添加下面字段
+```nginx
+    location / {
+        proxy_pass http://127.0.0.1:当前项目监听端口;
 
-**自定义端口：**
-
-```bash
-FRONTEND_PORT=8080 sudo -E bash install.sh
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 ```
+如果不配置，可能导致自己被封禁
 
-**旧版本升级（v0.0.2 之前）：**
-
-旧版脚本直接执行 `91 update` 可能失败，先执行以下修复命令：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/nianzhibai/91/main/install.sh -o /tmp/install-91.sh
-sudo bash /tmp/install-91.sh update
-```
-
----
 
 ### 方式二：Docker Compose 部署
 
@@ -186,7 +152,6 @@ docker compose up -d         # 更新并重启
 > 所有配置、数据库、封面、预览及上传文件均保存在 `./data/` 目录下。
 > 从旧版本升级 Docker 部署时，执行 `docker compose pull && docker compose up -d` 即可；`./data/` 不会被镜像更新覆盖。
 
----
 
 ## 数据存放位置
 
@@ -206,17 +171,12 @@ docker compose up -d         # 更新并重启
 | `./data/video-site.db` | SQLite 数据库 |
 | `./data/previews/` | 封面图和预览片段 |
 | `./data/uploads/` | 本地上传的视频文件 |
-| `./data/spider91/` | 91 爬虫抓取的视频文件 |
 
----
 
 ## 使用须知
 
 本项目面向**个人私有部署**，请仅接入你有权访问和管理的内容，并遵守对应网盘、站点的服务条款及所在地法律法规。
 
-> 不对外传播，仅限个人使用。
-
----
 
 ## PR提交规范
 欢迎大家提交PR，一起来完善这个项目，但是这里要说明一下PR提交的规范
@@ -224,13 +184,11 @@ docker compose up -d         # 更新并重启
 2. 完善项目的PR比新增功能的PR更容易Merge（例如：例如你发现开发者没有实现爬取的视频上传到某个网盘，并且你有这个需求，此时你可以实现一下这个功能然后提交PR，也感谢你为开发者分担工作量）
 3. 新增功能的PR不容易Merge，因为某些功能的需求可能不是所有人都需要的，如果一味的不断增加功能，会让项目变得过于庞大。当然如果你肯定你的新功能和想法很好，并且相信将会对于项目有很大的改善，那么热烈欢迎你的PR
 
----
 
 ## 许可证
 
-本项目基于 [MIT License](LICENSE) 开源。
+本项目基于 [MIT License](LICENSE) 开源
 
----
 
 ## 致谢
 
