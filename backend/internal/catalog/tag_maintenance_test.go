@@ -41,6 +41,17 @@ func seedTagMaintenanceVideo(t *testing.T, cat *Catalog, id, title, fileName str
 	}
 }
 
+func seedTagMaintenanceVideoRaw(t *testing.T, cat *Catalog, id, title, fileName string) {
+	t.Helper()
+	now := time.Now().UnixMilli()
+	if _, err := cat.db.ExecContext(context.Background(), `
+INSERT INTO videos (id, drive_id, file_id, file_name, title, tags, tags_manual, published_at, created_at, updated_at)
+VALUES (?, 'drive', ?, ?, ?, '[]', 0, ?, ?, ?)`,
+		id, "file-"+id, fileName, title, now, now, now); err != nil {
+		t.Fatalf("seed raw video %s: %v", id, err)
+	}
+}
+
 func TestReplaceAutoVideoTagsPreservesIndependentSourcesAndManualLock(t *testing.T) {
 	cat, ctx := openTagMaintenanceTestCatalog(t)
 	seedTagMaintenanceVideo(t, cat, "replace", "ordinary", "ordinary.mp4")
@@ -294,7 +305,7 @@ func hasTagLabel(tags []Tag, label string) bool {
 func TestSyncSeriesTagsNoLongerCreatesTags(t *testing.T) {
 	cat, ctx := openTagMaintenanceTestCatalog(t)
 	for i, code := range []string{"ABP-101", "ABP-102", "ABP-103"} {
-		seedTagMaintenanceVideo(t, cat, "series-"+string(rune('a'+i)), code, code+".mp4")
+		seedTagMaintenanceVideoRaw(t, cat, "series-"+string(rune('a'+i)), code, code+".mp4")
 	}
 	added, err := cat.SyncSeriesTags(ctx, 3)
 	if err != nil {
@@ -320,7 +331,7 @@ func TestSyncSeriesTagsDoesNotAttachExistingUserTag(t *testing.T) {
 		t.Fatalf("disable auto-generate tags: %v", err)
 	}
 	for i, code := range []string{"ABP-201", "ABP-202", "ABP-203"} {
-		seedTagMaintenanceVideo(t, cat, "series-disabled-"+string(rune('a'+i)), code, code+".mp4")
+		seedTagMaintenanceVideoRaw(t, cat, "series-disabled-"+string(rune('a'+i)), code, code+".mp4")
 	}
 	if added, err := cat.SyncSeriesTags(ctx, 3); err != nil || added != 0 {
 		t.Fatalf("disabled series sync = %d, %v; want 0, nil", added, err)
@@ -520,18 +531,18 @@ func TestDuplicatePropagationAndClearAreReversible(t *testing.T) {
 	}
 }
 
-func TestUpdateTagSavesAliasesAndClassifiesExistingVideos(t *testing.T) {
+func TestUpdateTagSavesMatchRulesAndClassifiesExistingVideos(t *testing.T) {
 	cat, ctx := openTagMaintenanceTestCatalog(t)
 	seedTagMaintenanceVideo(t, cat, "rule-video", "special phrase", "rule.mp4")
 	userTag, err := cat.EnsureTag(ctx, "display-label", "user")
 	if err != nil {
 		t.Fatalf("ensure user tag: %v", err)
 	}
-	updated, err := cat.UpdateTag(ctx, userTag.ID, []string{"special phrase"})
+	updated, err := cat.UpdateTag(ctx, userTag.ID, tagging.Rule{Keywords: []string{"special phrase"}})
 	if err != nil {
 		t.Fatalf("update tag: %v", err)
 	}
-	if len(updated.MatchRules.Keywords) != 0 || len(updated.Aliases) != 1 {
+	if len(updated.MatchRules.Keywords) != 1 || len(updated.Aliases) != 0 {
 		t.Fatalf("updated tag = %#v", updated)
 	}
 	classified, err := cat.ClassifyTagByID(ctx, userTag.ID)

@@ -3,36 +3,26 @@ package tagging
 import (
 	"strings"
 	"unicode"
-	"unicode/utf8"
 )
 
 // Rule 是单个标签的匹配规则，持久化在 tags.match_rules JSON 列。
 //
-//   - Keywords：子串匹配。适合 ≥2 字的中文词和较长的英文词（如"翘臀"、"blowjob"）。
-//     为防误伤，单字 / ≤3 字符的纯 ASCII 词即使写进 Keywords 也会按整词处理。
-//   - Words：整词（整段）匹配。文本先按"字母/数字连续段"切分，Words 里的词只有
-//     和某个完整段相等才算命中。适合 "臀"、"ass"、"3p" 这类高误伤短词。
-//   - Excludes：排除词。命中排除词的那部分文本会被抹除后再做匹配，例如
-//     "人妻" 配置排除词"老婆饼"后，"老婆饼测评"不会再因"老婆"命中。
+//   - Keywords：子串匹配。只要标题/文件名/作者/目录名包含该词就算命中。
 //   - MatchAVCode：识别文本中的番号（如 ABP-123、FC2-PPV-1234567）。通常由 AV
 //     归并标签开启；其它标签一般不需要。
 //   - AVCodePrefixes：MatchAVCode 开启时使用的车牌前缀列表；为空时使用内置列表。
 type Rule struct {
 	Keywords       []string `json:"keywords,omitempty"`
-	Words          []string `json:"words,omitempty"`
-	Excludes       []string `json:"excludes,omitempty"`
 	MatchAVCode    bool     `json:"matchAvCode,omitempty"`
 	AVCodePrefixes []string `json:"avCodePrefixes,omitempty"`
 }
 
-// IsEmpty 表示该规则没有任何显式配置（此时匹配器退化为按 label+aliases 匹配）。
+// IsEmpty 表示该规则没有任何显式配置（调用方可用 label+旧版 aliases 兜底）。
 func (r Rule) IsEmpty() bool {
-	return len(r.Keywords) == 0 && len(r.Words) == 0 && len(r.Excludes) == 0 && len(r.AVCodePrefixes) == 0 && !r.MatchAVCode
+	return len(r.Keywords) == 0 && len(r.AVCodePrefixes) == 0 && !r.MatchAVCode
 }
 
-// RuleFromAliases 把"标签名 + 展示别名"转换成规则：单字与 ≤3 字符 ASCII 词
-// 进 Words（整词），其余进 Keywords（子串）。用于没有显式规则的存量/用户标签，
-// 行为与旧版子串匹配基本一致，但补上了短词保护。
+// RuleFromAliases 把"标签名 + 旧版别名"转换成包含词规则。
 func RuleFromAliases(label string, aliases []string) Rule {
 	var rule Rule
 	seen := map[string]struct{}{}
@@ -46,11 +36,7 @@ func RuleFromAliases(label string, aliases []string) Rule {
 			continue
 		}
 		seen[key] = struct{}{}
-		if isWholeWordOnly(key) {
-			rule.Words = append(rule.Words, candidate)
-		} else {
-			rule.Keywords = append(rule.Keywords, candidate)
-		}
+		rule.Keywords = append(rule.Keywords, candidate)
 	}
 	return rule
 }
@@ -91,8 +77,6 @@ type compiledTerm struct {
 type compiledRule struct {
 	label       string
 	keywords    []compiledTerm // 子串匹配
-	words       []compiledTerm // 整词（整段）匹配
-	excludes    []compiledTerm
 	matchAVCode bool
 	avCodes     *AVCodeMatcher
 }
@@ -130,24 +114,9 @@ func NewMatcher(tagRules []TagRule) *Matcher {
 			if !ok {
 				continue
 			}
-			// 短词保护：单字 / 短 ASCII 词强制走整词，即使配置在 Keywords 里。
-			if isWholeWordOnly(term.lower) {
-				cr.words = append(cr.words, term)
-			} else {
-				cr.keywords = append(cr.keywords, term)
-			}
+			cr.keywords = append(cr.keywords, term)
 		}
-		for _, w := range tr.Rule.Words {
-			if term, ok := compileTerm(w); ok {
-				cr.words = append(cr.words, term)
-			}
-		}
-		for _, ex := range tr.Rule.Excludes {
-			if term, ok := compileTerm(ex); ok {
-				cr.excludes = append(cr.excludes, term)
-			}
-		}
-		if len(cr.keywords) == 0 && len(cr.words) == 0 && !cr.matchAVCode {
+		if len(cr.keywords) == 0 && !cr.matchAVCode {
 			continue
 		}
 		m.rules = append(m.rules, cr)
@@ -211,21 +180,12 @@ func (r compiledRule) matchField(raw string, norm normText) (string, bool) {
 			return code, true
 		}
 	}
-	if len(r.keywords) == 0 && len(r.words) == 0 {
+	if len(r.keywords) == 0 {
 		return "", false
 	}
-	effective := norm
-	if len(r.excludes) > 0 {
-		effective = norm.masked(r.excludes)
-	}
 	for _, kw := range r.keywords {
-		if strings.Contains(effective.lower, kw.lower) || strings.Contains(effective.compact, kw.compact) {
+		if strings.Contains(norm.lower, kw.lower) || strings.Contains(norm.compact, kw.compact) {
 			return kw.raw, true
-		}
-	}
-	for _, w := range r.words {
-		if _, ok := effective.segments[w.compact]; ok {
-			return w.raw, true
 		}
 	}
 	return "", false
@@ -234,37 +194,16 @@ func (r compiledRule) matchField(raw string, norm normText) (string, bool) {
 // ---------- 文本归一化 ----------
 
 type normText struct {
-	lower    string
-	compact  string
-	segments map[string]struct{}
+	lower   string
+	compact string
 }
 
 func normalizeText(s string) normText {
 	lower := strings.ToLower(s)
 	return normText{
-		lower:    lower,
-		compact:  compactText(lower),
-		segments: segmentsOf(lower),
+		lower:   lower,
+		compact: compactText(lower),
 	}
-}
-
-// masked 返回抹掉排除词后的文本视图：排除词在 lower 里替换成空格后重新计算
-// compact 与 segments，另外在 compact 上抹掉排除词的 compact 形态（覆盖排除词
-// 自身带分隔符的情况）。
-func (n normText) masked(excludes []compiledTerm) normText {
-	lower := n.lower
-	for _, ex := range excludes {
-		if ex.lower != "" && strings.Contains(lower, ex.lower) {
-			lower = strings.ReplaceAll(lower, ex.lower, " ")
-		}
-	}
-	compact := compactText(lower)
-	for _, ex := range excludes {
-		if ex.compact != "" && strings.Contains(compact, ex.compact) {
-			compact = strings.ReplaceAll(compact, ex.compact, " ")
-		}
-	}
-	return normText{lower: lower, compact: compact, segments: segmentsOf(lower)}
 }
 
 func compileTerm(s string) (compiledTerm, bool) {
@@ -288,50 +227,4 @@ func compactText(s string) string {
 		}
 	}
 	return b.String()
-}
-
-func segmentsOf(lower string) map[string]struct{} {
-	segments := map[string]struct{}{}
-	var b strings.Builder
-	flush := func() {
-		if b.Len() > 0 {
-			segments[b.String()] = struct{}{}
-			b.Reset()
-		}
-	}
-	for _, r := range lower {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-			continue
-		}
-		flush()
-	}
-	flush()
-	return segments
-}
-
-// isWholeWordOnly 判定一个词是否必须整词匹配：
-//   - 单个字符（含单个 CJK 字，如"臀"）
-//   - ≤3 字符且不含分隔符的纯 ASCII 词（如 "av"、"3p"、"ass"）
-func isWholeWordOnly(lower string) bool {
-	compact := compactText(lower)
-	if compact == "" {
-		return false
-	}
-	if utf8.RuneCountInString(compact) == 1 {
-		return true
-	}
-	if len(compact) <= 3 && compact == lower && isASCIIAlnum(compact) {
-		return true
-	}
-	return false
-}
-
-func isASCIIAlnum(s string) bool {
-	for _, r := range s {
-		if r > unicode.MaxASCII || (!unicode.IsLetter(r) && !unicode.IsDigit(r)) {
-			return false
-		}
-	}
-	return true
 }

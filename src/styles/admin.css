@@ -5485,12 +5485,12 @@
     grid-column: 1;
   }
 
-  .admin-tags-search {
-    grid-row: 1;
-  }
-
   .admin-tags-filter-panel {
     grid-row: 2;
+  }
+
+  .admin-tags-search {
+    grid-row: 1;
   }
 
   .admin-tags-toolbar-actions {
@@ -5581,9 +5581,9 @@
   user-select: none;
 }
 
-.admin-tag-card.is-selectable:focus-within {
-  border-color: var(--border-accent);
-  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-md);
+.admin-tag-card.is-selectable:focus-visible {
+  outline: 2px solid var(--border-accent);
+  outline-offset: 2px;
 }
 
 .admin-tag-card.is-selected {
@@ -5710,7 +5710,7 @@
   }
 }
 
-.admin-tag-card:hover {
+.admin-tag-card:not(.is-selectable):hover {
   border-color: var(--border-accent);
   box-shadow: var(--shadow-md);
 }
@@ -5733,22 +5733,30 @@
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 4px;
-  font-weight: var(--weight-medium);
+  font-weight: 400;
+  background: var(--tag-source-bg, rgba(255, 255, 255, 0.08));
+  color: var(--tag-source-fg, var(--text-muted));
 }
 
 .admin-tag-card__source-badge[data-source="user"] {
-  background: var(--success-soft);
-  color: var(--success);
+  --tag-source-bg: rgba(74, 222, 128, 0.16);
+  --tag-source-fg: #bbf7d0;
 }
 
 .admin-tag-card__source-badge[data-source="builtin"] {
-  background: var(--info-soft);
-  color: var(--info);
+  --tag-source-bg: rgba(96, 165, 250, 0.16);
+  --tag-source-fg: #bfdbfe;
 }
 
+.admin-tag-card__source-badge[data-source="av"],
 .admin-tag-card__source-badge[data-source="generated"] {
-  background: var(--warning-soft);
-  color: var(--warning);
+  --tag-source-bg: rgba(251, 191, 36, 0.17);
+  --tag-source-fg: #fde68a;
+}
+
+.admin-tag-card__source-badge[data-source="crawler"] {
+  --tag-source-bg: rgba(196, 181, 253, 0.18);
+  --tag-source-fg: #ddd6fe;
 }
 
 .admin-tag-card__footer {
@@ -5881,7 +5889,7 @@
 }
 
 .admin-modal--tag-dialog .admin-modal__header {
-  padding: 18px 20px 8px;
+  padding: 18px 20px 14px;
   border-bottom: 0;
   background: transparent;
 }
@@ -5900,7 +5908,7 @@
 }
 
 .admin-modal--tag-dialog .admin-modal__body {
-  padding: 10px 20px 12px;
+  padding: 14px 20px 24px;
 }
 
 .admin-modal--tag-dialog .admin-modal__footer {
@@ -5911,6 +5919,14 @@
 
 .admin-modal--tag-dialog .admin-modal__footer .admin-btn {
   box-shadow: none;
+}
+
+.admin-modal--tag-create .admin-modal__body {
+  padding-bottom: 6px;
+}
+
+.admin-modal--tag-create .admin-modal__footer {
+  padding-top: 6px;
 }
 
 .admin-modal--tag-dialog .admin-form {
@@ -5933,78 +5949,24 @@
   color: var(--text-muted);
 }
 
-.admin-tag-alias-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 38px;
-  padding: 10px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
+.admin-tag-create-row {
+  position: relative;
+  gap: 4px;
 }
 
-.admin-tag-alias-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  max-width: 100%;
-  padding: 5px 8px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-strong);
-  font-size: var(--font-xs);
-  font-weight: var(--weight-medium);
-  line-height: 1.2;
-}
-
-.admin-tag-alias-pill > span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.admin-tag-alias-pill button {
-  appearance: none;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.admin-tag-alias-pill button:hover:not(:disabled) {
-  color: var(--danger);
-}
-
-.admin-tag-alias-pill button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.admin-tag-alias-empty {
-  align-self: center;
-  color: var(--text-faint);
-  font-size: var(--font-xs);
-}
-
-.admin-tag-alias-input-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.admin-tag-alias-input-row .admin-btn {
-  min-height: 38px;
-  box-shadow: none;
-}
-
-.admin-tag-alias-warning {
+.admin-tag-create-warning {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 3px);
   color: var(--danger);
   font-size: var(--font-xs);
   line-height: 1.4;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.admin-tag-create-warning.is-visible {
+  visibility: visible;
 }
 
 .admin-modal--tag-delete-confirm {
@@ -6053,11 +6015,86 @@
 
 .admin-tag-rule-form textarea {
   min-height: 72px;
+  line-height: 1.5;
   resize: vertical;
 }
 
-.admin-tag-rule-av {
-  width: fit-content;
+.admin-tag-rule-keyword-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-tag-rule-keyword-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-height: 38px;
+  min-width: 0;
+  padding: 2px 0;
+  transform: translateY(-6px);
+}
+
+.admin-tag-rule-keyword-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: var(--font-xs);
+  line-height: 1.25;
+}
+
+.admin-tag-rule-keyword-pill > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-tag-rule-keyword-pill button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.admin-tag-rule-keyword-pill button:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.admin-tag-rule-keyword-pill button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-tag-rule-keyword-empty {
+  align-self: center;
+  color: var(--text-faint);
+  font-size: var(--font-xs);
+}
+
+.admin-tag-rule-keyword-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-tag-rule-keyword-input-row .admin-btn {
+  min-height: 38px;
+  box-shadow: none;
+}
+
+.admin-tag-rule-keyword-warning {
+  color: var(--danger);
+  font-size: var(--font-xs);
+  line-height: 1.4;
 }
 
 /* Optimizations */

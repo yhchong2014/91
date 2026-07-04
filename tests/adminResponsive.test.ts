@@ -668,8 +668,10 @@ test("mobile tags management does not create horizontal page overflow", () => {
   assert.match(toolbar, /grid-template-columns\s*:\s*1fr/);
   assert.match(toolbar, /justify-items\s*:\s*stretch/);
   assert.match(allRuleBodies(adminCss, ".admin-tags-search"), /grid-column\s*:\s*2/);
+  assert.match(allRuleBodies(adminCss, ".admin-tags-search"), /grid-row\s*:\s*1/);
   assert.match(allRuleBodies(adminCss, ".admin-tags-search"), /justify-self\s*:\s*center/);
   assert.match(search, /grid-column\s*:\s*1/);
+  assert.match(search, /grid-row\s*:\s*1/);
   assert.match(search, /width\s*:\s*100%/);
   assert.match(search, /min-width\s*:\s*0/);
   assert.match(desktopFilterPanel, /grid-column\s*:\s*2/);

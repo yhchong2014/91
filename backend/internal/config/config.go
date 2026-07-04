@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -191,16 +190,13 @@ type Preview struct {
 	Segments        int    `yaml:"segments"`
 }
 
-// Nightly 是凌晨流水线（扫盘 → 91 爬虫 → 迁移）的调度配置。
+// Nightly 是凌晨流水线（扫盘 → 爬虫 → 迁移 → 去重维护）的调度配置。
 //
 // 一个进程只跑一条 nightly 流水线；该 cron 时间到达且当天还没跑过时触发，
-// 也可被管理后台「扫描所有网盘」按钮手动触发。MaxDuration 是软超时，超过
-// 后当前 phase 完成、后续 phase 不再启动。
+// 也可被管理后台「扫描所有网盘」按钮手动触发。
 type Nightly struct {
-	// CronHour 是每日触发整点（0–23）；默认 1 表示 01:00。
+	// CronHour 是每日触发整点；默认 1 表示 01:00。
 	CronHour int `yaml:"cron_hour"`
-	// MaxDuration 是单次流水线总耗时上限；默认 6h。
-	MaxDuration time.Duration `yaml:"max_duration"`
 }
 
 // Drive 配置项中的敏感字段（Cookie / RefreshToken 等）最终由管理后台写入 DB
@@ -271,15 +267,7 @@ func (c *Config) applyDefaults() {
 	if c.Preview.Segments == 0 {
 		c.Preview.Segments = 3
 	}
-	// Nightly defaults。CronHour=0 是合法值（午夜），没法用 zero-value 单独
-	// 区分"未设"和"显式 0"。把整个 nightly 块当 sentinel —— MaxDuration==0
-	// 视为整个块缺失，重置成 (cron_hour=1, max_duration=6h)。代价：用户想配
-	// CronHour=0（午夜）必须同时显式写 max_duration（任何 >0 的值即可）。
-	// 收益：默认部署（yaml 没 nightly 块）得到 01:00 + 6h，与用户预期一致。
-	if c.Nightly.MaxDuration <= 0 {
-		c.Nightly.CronHour = 1
-		c.Nightly.MaxDuration = 6 * time.Hour
-	} else if c.Nightly.CronHour < 0 || c.Nightly.CronHour > 23 {
+	if c.Nightly.CronHour <= 0 || c.Nightly.CronHour > 23 {
 		c.Nightly.CronHour = 1
 	}
 }

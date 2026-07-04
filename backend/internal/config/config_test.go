@@ -103,6 +103,39 @@ scanner:
 	}
 }
 
+func TestLoadDefaultNightlyCronHour(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Nightly.CronHour != 1 {
+		t.Fatalf("nightly cron hour = %d, want 1", cfg.Nightly.CronHour)
+	}
+}
+
+func TestLoadInvalidNightlyCronHourFallsBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`
+nightly:
+  cron_hour: 25
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Nightly.CronHour != 1 {
+		t.Fatalf("nightly cron hour = %d, want fallback 1", cfg.Nightly.CronHour)
+	}
+}
+
 func hasVideoExtension(exts []string, want string) bool {
 	want = strings.ToLower(strings.TrimSpace(want))
 	for _, ext := range exts {

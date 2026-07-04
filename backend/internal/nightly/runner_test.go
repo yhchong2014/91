@@ -47,21 +47,23 @@ func TestShouldRunChecksDate(t *testing.T) {
 
 func TestNewAppliesDefaults(t *testing.T) {
 	r := New(Config{Settings: newStubSettings()})
-	// CronHour=0 is a legitimate hour (midnight); New() only clamps out-of-range
-	// values. The "default to 01:00" responsibility lives in the config layer.
-	if r.cfg.CronHour != 0 {
-		t.Errorf("CronHour zero-value should be preserved, got %d", r.cfg.CronHour)
+	if r.cfg.CronHour != 1 {
+		t.Errorf("CronHour zero-value should fall back to 1, got %d", r.cfg.CronHour)
 	}
 }
 
 func TestNewRejectsInvalidCronHour(t *testing.T) {
-	r := New(Config{CronHour: -1, Settings: newStubSettings()})
+	r := New(Config{CronHour: 0, Settings: newStubSettings()})
 	if r.cfg.CronHour != 1 {
 		t.Fatalf("invalid cron_hour fall back to 1, got %d", r.cfg.CronHour)
 	}
-	r2 := New(Config{CronHour: 25, Settings: newStubSettings()})
+	r2 := New(Config{CronHour: -1, Settings: newStubSettings()})
 	if r2.cfg.CronHour != 1 {
 		t.Fatalf("out-of-range cron_hour fall back to 1, got %d", r2.cfg.CronHour)
+	}
+	r3 := New(Config{CronHour: 25, Settings: newStubSettings()})
+	if r3.cfg.CronHour != 1 {
+		t.Fatalf("out-of-range cron_hour fall back to 1, got %d", r3.cfg.CronHour)
 	}
 }
 
@@ -292,13 +294,8 @@ func TestRunPipelineLockedDropsOverlappingTriggers(t *testing.T) {
 	close(releaseFirst)
 }
 
-func TestSoftDeadlinePreventsLaterPhases_REMOVED(t *testing.T) {
-	t.Skip("legacy soft-deadline removed in 2026-05; see TestCtxCancelPreventsLaterPhases")
-}
-
 // TestCtxCancelPreventsLaterPhases 校验：ctx 在 phase 边界已取消（进程退出）时，
-// 后续 phase 不会启动。这是 checkDeadline 的核心语义，原"软超时"行为已废除，但
-// "ctx 已 done 就 bail" 仍保留。
+// 后续 phase 不会启动。"ctx 已 done 就 bail" 仍保留。
 func TestCtxCancelPreventsLaterPhases(t *testing.T) {
 	rec := &recorder{}
 	settings := newStubSettings()

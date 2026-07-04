@@ -51,9 +51,9 @@ CREATE INDEX IF NOT EXISTS idx_videos_views ON videos(views DESC);
 CREATE TABLE IF NOT EXISTS tags (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     label       TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    aliases     TEXT NOT NULL DEFAULT '[]',       -- JSON array，展示用同义词
-    -- 匹配规则 JSON：{"keywords":[],"words":[],"excludes":[],"matchAvCode":bool}
-    -- 为空时匹配器按 label+aliases 兜底（等价旧版行为 + 短词保护）。
+    aliases     TEXT NOT NULL DEFAULT '[]',       -- JSON array，旧版别名数据，保留用于迁移兼容
+    -- 匹配规则 JSON：{"keywords":[],"matchAvCode":bool}
+    -- 为空时匹配器按 label+旧版 aliases 兜底。
     match_rules TEXT NOT NULL DEFAULT '{}',
     source      TEXT NOT NULL DEFAULT 'user',     -- builtin / user / generated
     origin      TEXT NOT NULL DEFAULT '',         -- crawler 等来源型标签标记；不参与匹配来源归一

@@ -33,11 +33,9 @@ scanner:
   video_extensions: [".mp4", ".mkv", ".mov", ".webm", ".avi", ".strm"]
 
 nightly:
-  # 凌晨流水线触发整点（0-23），默认 1 即每天 01:00。
+  # 凌晨流水线触发整点，默认 1 即每天 01:00；需要改时间直接改这个值。
   # 运行时会统一编排扫描、媒体资产生成和后续清理任务。
   cron_hour: 1
-  # 单次流水线总耗时上限（软超时）；超过后当前 phase 跑完不启动后续 phase。
-  max_duration: 6h
 
 preview:
   # 是否启用 ffmpeg 抽帧生成预览视频

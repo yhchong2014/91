@@ -330,12 +330,11 @@ func main() {
 	//   Phase 2 脚本爬虫 + 入队预览视频
 	//   Phase 3 爬虫本地视频 → 云盘上传
 	//   Phase 4 全库重复视频维护：精确指纹去重 + 标题/时长/封面近似去重
-	//   Phase 5 标签维护：仅用现有标签池重算视频匹配，不生成新标签
+	// 标签匹配不在夜间流水线中全库重算；新视频入库和管理员修改标签规则时按事件刷新。
 	// 也响应 admin "扫描所有网盘" 按钮（POST /admin/api/jobs/nightly/run → TriggerNow）。
 	app.nightlyRunner = nightly.New(nightly.Config{
 		Settings:              cat,
 		CronHour:              cfg.Nightly.CronHour,
-		MaxDuration:           cfg.Nightly.MaxDuration,
 		ListScanTargets:       app.listScanTargetIDs,
 		RunScan:               app.runScan,
 		ListCrawlerDrives:     app.listCrawlerDriveIDs,
@@ -343,7 +342,6 @@ func main() {
 		WaitPreviewQueuesIdle: app.waitAllPreviewQueuesIdle,
 		RunMigration:          app.crawlerUploader.RunOnce,
 		RunDedupeAssetCleanup: app.cleanupDuplicateVideoAssets,
-		RunTagMaintenance:     app.runNightlyTagMaintenance,
 	})
 	go app.nightlyRunner.Run(ctx)
 
@@ -363,7 +361,6 @@ func main() {
 	}()
 	go app.attachExistingDrives(ctx)
 	go app.migrateHiddenVideosToTombstone(ctx)
-	go app.startPostStartupTagMaintenance(ctx)
 
 	// 等待退出信号
 	sigs := make(chan os.Signal, 1)
@@ -3543,7 +3540,7 @@ func (a *App) listCrawlerDriveIDs(ctx context.Context) []string {
 //
 // 顺序：先等所有 thumb worker，再等预览视频，最后等指纹。队列生成时互不等待；
 // nightly 只在 phase 边界统一等待它们都 drain，保证爬虫视频迁移前本地资产已产出。
-// 若 ctx 在等待中被取消（软超时 / shutdown），立即返回 ctx.Err。
+// 若 ctx 在等待中被取消（shutdown / 管理员停止），立即返回 ctx.Err。
 func (a *App) waitAllPreviewQueuesIdle(ctx context.Context) error {
 	a.mu.Lock()
 	thumbWorkers := make([]*preview.ThumbWorker, 0, len(a.thumbWorkers))

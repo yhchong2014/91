@@ -222,10 +222,10 @@ SELECT t.id
 	return result, nil
 }
 
-// ReconcileBuiltinTags restores the built-in tag pack. Existing
-// administrator-edited rules are not overwritten.
+// ReconcileBuiltinTags initializes the built-in tag pack once. After the
+// initialization marker is present, deleted builtin tags are not restored.
 func (c *Catalog) ReconcileBuiltinTags(ctx context.Context) error {
-	return c.seedBuiltinTagPack(ctx)
+	return c.initializeBuiltinTagPackOnce(ctx)
 }
 
 // PruneUnreferencedTags 删除零引用的 generated 标签，包括没有任何视频引用的

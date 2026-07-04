@@ -24,7 +24,6 @@ type DeleteConfirmState =
 export function TagsPage() {
   const [tags, setTags] = useState<api.AdminTag[]>([]);
   const [label, setLabel] = useState("");
-  const [aliases, setAliases] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -62,12 +61,12 @@ export function TagsPage() {
   async function handleCreate() {
     const cleanLabel = label.trim();
     if (!cleanLabel) return;
+    if (createLabelExists) return;
     setSaving(true);
     try {
-      const r = await api.createTag(cleanLabel, splitList(aliases));
+      const r = await api.createTag(cleanLabel);
       show(`已添加标签「${r.label}」`, "success");
       setLabel("");
-      setAliases("");
       setCreateModalOpen(false);
       await refresh();
     } catch (e) {
@@ -83,7 +82,6 @@ export function TagsPage() {
 
   function openCreateModal() {
     setLabel("");
-    setAliases("");
     setCreateModalOpen(true);
   }
 
@@ -175,7 +173,7 @@ export function TagsPage() {
       const matchesSearch =
         !query ||
         t.label.toLowerCase().includes(query) ||
-        (t.aliases ?? []).some((a) => a.toLowerCase().includes(query));
+        tagRuleTerms(t).some((term) => term.toLowerCase().includes(query));
       const matchesSource = filterSource === "all" || tagSourceKey(t) === filterSource;
       return matchesSearch && matchesSource;
     });
@@ -216,6 +214,11 @@ export function TagsPage() {
   );
   const allSelected =
     deletablePageTags.length > 0 && deletablePageTags.every((t) => selected.has(t.id));
+  const createLabelExists = useMemo(() => {
+    const cleanLabel = label.trim().toLowerCase();
+    if (!cleanLabel) return false;
+    return tags.some((tag) => tag.label.trim().toLowerCase() === cleanLabel);
+  }, [label, tags]);
 
   function selectPageTags() {
     setSelected((prev) => {
@@ -233,11 +236,11 @@ export function TagsPage() {
             <div className="admin-tags-search">
               <Search className="admin-tags-search__icon" size={14} />
               <input
-                aria-label="搜索标签名或别名"
+                aria-label="搜索标签名或包含词"
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索标签名或别名..."
+                placeholder="搜索标签名或包含词"
               />
             </div>
 
@@ -318,7 +321,7 @@ export function TagsPage() {
                         <>
                           <div className="admin-tag-card__head">
                             <span className="admin-tag-card__title">{tag.label}</span>
-                            <span className="admin-tag-card__source-badge" data-source={tagSourceKey(tag)}>
+                            <span className="admin-tag-card__source-badge" data-source={tagCardSourceKey(tag)}>
                               {tagCardSourceLabel(tag)}
                             </span>
                           </div>
@@ -452,7 +455,7 @@ export function TagsPage() {
       <Modal
         open={createModalOpen}
         title="新增标签"
-        className="admin-modal--tag-rules admin-modal--tag-dialog"
+        className="admin-modal--tag-rules admin-modal--tag-dialog admin-modal--tag-create"
         onClose={() => {
           if (!saving) setCreateModalOpen(false);
         }}
@@ -470,9 +473,9 @@ export function TagsPage() {
               type="submit"
               form="admin-create-tag-form"
               className="admin-btn is-primary"
-              disabled={saving || !label.trim()}
+              disabled={saving || !label.trim() || createLabelExists}
             >
-              {saving ? "添加中..." : "添加标签"}
+              {saving ? "添加中..." : "确认"}
             </button>
           </>
         }
@@ -485,23 +488,22 @@ export function TagsPage() {
             handleCreate();
           }}
         >
-          <div className="admin-form__row">
-            <label htmlFor="admin-tag-label">标签名</label>
+          <div className="admin-form__row admin-tag-create-row">
             <input
               id="admin-tag-label"
+              aria-label="输入标签名"
+              aria-describedby={createLabelExists ? "admin-tag-create-warning" : undefined}
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="例如：清纯"
+              placeholder="输入标签名"
             />
-          </div>
-          <div className="admin-form__row">
-            <label htmlFor="admin-tag-aliases">别名</label>
-            <input
-              id="admin-tag-aliases"
-              value={aliases}
-              onChange={(e) => setAliases(e.target.value)}
-              placeholder="逗号分隔，例如：纯欲, 清新"
-            />
+            <span
+              className={`admin-tag-create-warning${createLabelExists ? " is-visible" : ""}`}
+              id="admin-tag-create-warning"
+              aria-hidden={!createLabelExists}
+            >
+              当前标签已存在
+            </span>
           </div>
         </form>
       </Modal>
@@ -509,8 +511,7 @@ export function TagsPage() {
         <EditTagModal
           tag={editingTag}
           onClose={() => setEditingTag(null)}
-          onSaved={async () => {
-            setEditingTag(null);
+          onChanged={async () => {
             await refresh();
           }}
         />
@@ -523,7 +524,7 @@ export function TagsPage() {
             ? `确定要删除选中的 ${deleteConfirm.ids.length} 个标签吗？`
             : `确定要删除标签「${deleteConfirm?.tag.label ?? ""}」吗？`
         }
-        confirmText="确认删除"
+        confirmText="确认"
         danger
         centerMessage
         modalClassName="admin-modal--delete-confirm admin-modal--tag-dialog admin-modal--tag-delete-confirm"
@@ -541,41 +542,34 @@ export function TagsPage() {
 function EditTagModal({
   tag,
   onClose,
-  onSaved,
+  onChanged,
 }: {
   tag: api.AdminTag;
   onClose: () => void;
-  onSaved: () => void | Promise<void>;
+  onChanged: () => void | Promise<void>;
 }) {
-  const [aliases, setAliases] = useState(() => editTagAliases(tag));
-  const [aliasDraft, setAliasDraft] = useState("");
+  const [draft, setDraft] = useState(() => tagRuleDraft(tag));
   const [saving, setSaving] = useState(false);
   const { show } = useToast();
-  const aliasAdditions = pendingAliasAdditions(aliasDraft, tag.label, aliases);
-  const duplicateAliases = duplicateAliasInputs(aliasDraft, tag.label, aliases);
+  const isAV = isAVTag(tag);
 
-  async function save() {
+  async function persistDraft(nextDraft: RuleDraft) {
+    const parsedRules = matchRulesFromDraft(nextDraft, isAV);
+    if (!isAV && !hasRuleTerms(parsedRules)) {
+      show("至少保留一个包含词", "error");
+      return;
+    }
     setSaving(true);
     try {
-      await api.updateTag(tag.id, aliases);
+      await api.updateTag(tag.id, parsedRules);
+      setDraft(nextDraft);
       show("标签已保存", "success");
-      await onSaved();
+      await onChanged();
     } catch (e) {
       show(e instanceof Error ? e.message : "保存标签失败", "error");
     } finally {
       setSaving(false);
     }
-  }
-
-  function addAliases(raw: string) {
-    const additions = pendingAliasAdditions(raw, tag.label, aliases);
-    if (additions.length === 0) return;
-    setAliases((current) => normalizeAliasList([...current, ...additions], tag.label));
-    setAliasDraft("");
-  }
-
-  function removeAlias(alias: string) {
-    setAliases((current) => current.filter((item) => item !== alias));
   }
 
   return (
@@ -585,74 +579,183 @@ function EditTagModal({
       className="admin-modal--tag-rules admin-modal--tag-dialog"
       onClose={onClose}
       restoreFocus={false}
-      footer={
-        <>
-          <button type="button" className="admin-btn" onClick={onClose} disabled={saving}>
-            取消
-          </button>
-          <button type="button" className="admin-btn is-primary" onClick={save} disabled={saving}>
-            {saving ? "保存中..." : "保存"}
-          </button>
-        </>
-      }
     >
       <div className="admin-form admin-tag-rule-form">
-        <div className="admin-form__row">
-          <span className="admin-form__label" id="admin-tag-aliases-current-label">
-            已有别名
-          </span>
-          <div className="admin-tag-alias-list" aria-labelledby="admin-tag-aliases-current-label">
-            {aliases.length > 0 ? (
-              aliases.map((alias) => (
-                <span key={alias} className="admin-tag-alias-pill">
-                  <span>{alias}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeAlias(alias)}
-                    disabled={saving}
-                    aria-label={`移除别名 ${alias}`}
-                  >
-                    移除
-                  </button>
-                </span>
-              ))
-            ) : (
-              <span className="admin-tag-alias-empty">暂无别名</span>
-            )}
-          </div>
-        </div>
-        <div className="admin-form__row">
-          <label htmlFor="admin-tag-rule-aliases">新增别名</label>
-          <div className="admin-tag-alias-input-row">
-            <input
-              id="admin-tag-rule-aliases"
-              value={aliasDraft}
-              onChange={(e) => setAliasDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                e.preventDefault();
-                addAliases(aliasDraft);
-              }}
-              placeholder="输入别名"
-              aria-describedby={duplicateAliases.length > 0 ? "admin-tag-alias-warning" : undefined}
+        {isAV ? (
+          <div className="admin-form__row">
+            <PrefixPillEditor
+              value={draft.avCodePrefixes}
+              onCommit={(value) => void persistDraft({ ...draft, avCodePrefixes: value })}
+              disabled={saving}
             />
-            <button
-              type="button"
-              className="admin-btn"
-              onClick={() => addAliases(aliasDraft)}
-              disabled={saving || aliasAdditions.length === 0}
-            >
-              添加
-            </button>
           </div>
-          {duplicateAliases.length > 0 && (
-            <span className="admin-tag-alias-warning" id="admin-tag-alias-warning">
-              当前标签已存在
-            </span>
-          )}
-        </div>
+        ) : (
+          <div className="admin-form__row">
+            <KeywordPillEditor
+              value={draft.keywords}
+              onCommit={(value) => void persistDraft({ ...draft, keywords: value })}
+              disabled={saving}
+            />
+          </div>
+        )}
       </div>
     </Modal>
+  );
+}
+
+function KeywordPillEditor({
+  value,
+  onCommit,
+  disabled,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <RulePillEditor
+      value={value}
+      onCommit={onCommit}
+      disabled={disabled}
+      inputId="admin-tag-rule-keywords"
+      inputLabel="添加包含词"
+      listLabel="当前包含词"
+      emptyText="暂无包含词"
+      duplicateText="当前包含词已存在"
+      warningId="admin-tag-rule-keyword-warning"
+      removeLabelPrefix="移除包含词"
+      splitTerms={splitRuleTerms}
+    />
+  );
+}
+
+function PrefixPillEditor({
+  value,
+  onCommit,
+  disabled,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <RulePillEditor
+      value={value}
+      onCommit={onCommit}
+      disabled={disabled}
+      inputId="admin-tag-rule-prefixes"
+      inputLabel="添加车牌前缀"
+      listLabel="当前车牌前缀"
+      emptyText="暂无车牌前缀"
+      duplicateText="当前车牌前缀已存在"
+      warningId="admin-tag-rule-prefix-warning"
+      removeLabelPrefix="移除车牌前缀"
+      splitTerms={splitPrefixTerms}
+      allowEmpty
+    />
+  );
+}
+
+function RulePillEditor({
+  value,
+  onCommit,
+  disabled,
+  inputId,
+  inputLabel,
+  listLabel,
+  emptyText,
+  duplicateText,
+  warningId,
+  removeLabelPrefix,
+  splitTerms,
+  allowEmpty = false,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+  disabled: boolean;
+  inputId: string;
+  inputLabel: string;
+  listLabel: string;
+  emptyText: string;
+  duplicateText: string;
+  warningId: string;
+  removeLabelPrefix: string;
+  splitTerms: (value: string) => string[];
+  allowEmpty?: boolean;
+}) {
+  const [input, setInput] = useState("");
+  const terms = splitTerms(value);
+  const pendingTerm = singleRuleTerm(input, splitTerms);
+  const pendingExists = terms.some((term) => term.toLowerCase() === pendingTerm.toLowerCase());
+  const showDuplicateWarning = pendingTerm !== "" && pendingExists;
+  const canRemoveTerm = allowEmpty || terms.length > 1;
+
+  function commitTerms(nextTerms: string[]) {
+    onCommit(joinRuleTerms(splitTerms(nextTerms.join("\n"))));
+  }
+
+  function addInputTerm() {
+    if (!pendingTerm || pendingExists) return;
+    commitTerms([...terms, pendingTerm]);
+    setInput("");
+  }
+
+  function removeTerm(term: string) {
+    if (!canRemoveTerm) return;
+    commitTerms(terms.filter((item) => item !== term));
+  }
+
+  return (
+    <div className="admin-tag-rule-keyword-editor">
+      <div className="admin-tag-rule-keyword-list" aria-label={listLabel}>
+        {terms.length > 0 ? (
+          terms.map((term) => (
+            <span key={term} className="admin-tag-rule-keyword-pill">
+              <span>{term}</span>
+              <button
+                type="button"
+                onClick={() => removeTerm(term)}
+                disabled={disabled || !canRemoveTerm}
+                aria-label={`${removeLabelPrefix} ${term}`}
+              >
+                移除
+              </button>
+            </span>
+          ))
+        ) : (
+          <span className="admin-tag-rule-keyword-empty">{emptyText}</span>
+        )}
+      </div>
+      <div className="admin-tag-rule-keyword-input-row">
+        <input
+          id={inputId}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            addInputTerm();
+          }}
+          disabled={disabled}
+          aria-describedby={showDuplicateWarning ? warningId : undefined}
+          aria-label={inputLabel}
+          placeholder={inputLabel}
+        />
+        <button
+          type="button"
+          className="admin-btn"
+          onClick={addInputTerm}
+          disabled={disabled || !pendingTerm || pendingExists}
+        >
+          添加
+        </button>
+      </div>
+      {showDuplicateWarning && (
+        <span className="admin-tag-rule-keyword-warning" id={warningId}>
+          {duplicateText}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -676,66 +779,80 @@ function useTagsPageSize() {
   return pageSize;
 }
 
-function splitList(s: string): string[] {
-  return s
-    .split(/[,，、\s]+/)
-    .map((x) => x.trim())
-    .filter(Boolean);
+type RuleDraft = {
+  keywords: string;
+  avCodePrefixes: string;
+};
+
+function tagRuleDraft(tag: api.AdminTag): RuleDraft {
+  const rules = tag.matchRules ?? {};
+  return {
+    keywords: joinRuleTerms(rules.keywords),
+    avCodePrefixes: joinRuleTerms(rules.avCodePrefixes),
+  };
 }
 
-function normalizeAliasList(aliases: string[], label: string): string[] {
-  const labelKey = label.trim().toLowerCase();
+function matchRulesFromDraft(draft: RuleDraft, isAV: boolean): api.TagMatchRules {
+  if (isAV) {
+    return {
+      matchAvCode: true,
+      avCodePrefixes: splitPrefixTerms(draft.avCodePrefixes),
+    };
+  }
+  return {
+    keywords: splitRuleTerms(draft.keywords),
+  };
+}
+
+function tagRuleTerms(tag: api.AdminTag): string[] {
+  return ruleTerms(tag.matchRules ?? {});
+}
+
+function hasRuleTerms(rules: api.TagMatchRules): boolean {
+  return [
+    ...(rules.keywords ?? []),
+    ...(rules.avCodePrefixes ?? []),
+  ].length > 0;
+}
+
+function ruleTerms(rules: api.TagMatchRules): string[] {
+  return [
+    ...(rules.keywords ?? []),
+    ...(rules.avCodePrefixes ?? []),
+  ];
+}
+
+function joinRuleTerms(terms?: string[]): string {
+  return (terms ?? []).join("\n");
+}
+
+function splitRuleTerms(value: string): string[] {
+  return uniqueTerms(value.split(/[\n,，、;；]+/));
+}
+
+function singleRuleTerm(value: string, splitTerms: (value: string) => string[] = splitRuleTerms): string {
+  return splitTerms(value)[0] ?? "";
+}
+
+function splitPrefixTerms(value: string): string[] {
+  return uniqueTerms(value.split(/[\s,，、;；]+/).map((term) => term.toUpperCase()));
+}
+
+function uniqueTerms(terms: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const alias of aliases) {
-    const clean = alias.trim();
+  for (const term of terms) {
+    const clean = term.trim();
     const key = clean.toLowerCase();
-    if (!clean || key === labelKey || seen.has(key)) continue;
+    if (!clean || seen.has(key)) continue;
     seen.add(key);
     out.push(clean);
   }
   return out;
 }
 
-function editTagAliases(tag: api.AdminTag): string[] {
-  if (tag.label.trim().toUpperCase() === "AV") {
-    return normalizeAliasList(
-      [...(tag.matchRules?.avCodePrefixes ?? []), ...(tag.aliases ?? [])],
-      tag.label
-    );
-  }
-  return normalizeAliasList(tag.aliases ?? [], tag.label);
-}
-
-function pendingAliasAdditions(raw: string, label: string, existingAliases: string[]): string[] {
-  const existingKeys = new Set(existingAliases.map((alias) => alias.trim().toLowerCase()));
-  return normalizeAliasList(splitList(raw), label).filter(
-    (alias) => !existingKeys.has(alias.toLowerCase())
-  );
-}
-
-function duplicateAliasInputs(raw: string, label: string, existingAliases: string[]): string[] {
-  const labelKey = label.trim().toLowerCase();
-  const existingKeys = new Set(existingAliases.map((alias) => alias.trim().toLowerCase()));
-  const inputKeys = new Set<string>();
-  const duplicateKeys = new Set<string>();
-  const duplicates: string[] = [];
-
-  for (const alias of splitList(raw)) {
-    const clean = alias.trim();
-    const key = clean.toLowerCase();
-    if (!clean) continue;
-    if (key === labelKey || existingKeys.has(key) || inputKeys.has(key)) {
-      if (!duplicateKeys.has(key)) {
-        duplicateKeys.add(key);
-        duplicates.push(clean);
-      }
-      continue;
-    }
-    inputKeys.add(key);
-  }
-
-  return duplicates;
+function isAVTag(tag: api.AdminTag): boolean {
+  return tag.label.trim().toUpperCase() === "AV";
 }
 
 function sourceLabel(source: string): string {
@@ -749,6 +866,12 @@ function tagCardSourceLabel(tag: api.AdminTag): string {
   if (tag.crawlerOwned || tag.source === "crawler") return "爬虫脚本";
   if (tag.source === "generated") return "AV";
   return sourceLabel(tag.source);
+}
+
+function tagCardSourceKey(tag: api.AdminTag): string {
+  if (tag.crawlerOwned || tag.source === "crawler") return "crawler";
+  if (tag.source === "generated") return "av";
+  return tag.source || "";
 }
 
 function tagDisplayGroupKey(tag: api.AdminTag): string {

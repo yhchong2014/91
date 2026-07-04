@@ -7,69 +7,30 @@ import (
 
 func TestMatcherKeywordSubstring(t *testing.T) {
 	m := NewMatcher([]TagRule{
-		{Label: "臀", Rule: Rule{Keywords: []string{"翘臀", "蜜桃臀"}, Words: []string{"臀"}}},
+		{Label: "臀", Rule: Rule{Keywords: []string{"翘臀", "蜜桃臀", "臀"}}},
 	})
 	if got := m.MatchLabels("白丝女友的翘臀特写"); !reflect.DeepEqual(got, []string{"臀"}) {
 		t.Fatalf("labels = %#v, want 臀", got)
 	}
-	// 单字 word 不做子串匹配："臀部" 里没有独立的"臀"段。
-	if got := m.MatchLabels("健身教程"); len(got) != 0 {
-		t.Fatalf("labels = %#v, want none", got)
+	if got := m.MatchLabels("健身臀部教程"); !reflect.DeepEqual(got, []string{"臀"}) {
+		t.Fatalf("单字包含词未按子串命中: %#v", got)
 	}
 }
 
-func TestMatcherSingleCJKCharRequiresWholeSegment(t *testing.T) {
-	m := NewMatcher([]TagRule{
-		{Label: "奶子", Rule: Rule{Words: []string{"奶"}}},
-	})
-	if got := m.MatchLabels("每天一杯牛奶配面包"); len(got) != 0 {
-		t.Fatalf("单字被子串误伤: %#v", got)
-	}
-	if got := m.MatchLabels("[某站] 奶 - 作者"); !reflect.DeepEqual(got, []string{"奶子"}) {
-		t.Fatalf("整段单字未命中: %#v", got)
-	}
-}
-
-func TestMatcherShortASCIIWholeWord(t *testing.T) {
-	m := NewMatcher([]TagRule{
-		{Label: "臀", Rule: Rule{Words: []string{"ass"}}},
-		{Label: "3P", Rule: Rule{Words: []string{"3p"}}},
-	})
-	if got := m.MatchLabels("advanced class material"); len(got) != 0 {
-		t.Fatalf("class 不应命中 ass: %#v", got)
-	}
-	got := m.MatchLabels("big ASS and 3P party")
-	want := []string{"臀", "3P"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("labels = %#v, want %#v", got, want)
-	}
-}
-
-// 短 ASCII 词即使被配置在 Keywords 里也应被强制整词，防误伤。
-func TestMatcherShortKeywordPromotedToWord(t *testing.T) {
+func TestMatcherShortKeywordUsesSubstring(t *testing.T) {
 	m := NewMatcher([]TagRule{
 		{Label: "AV", Rule: Rule{Keywords: []string{"av"}}},
 	})
-	if got := m.MatchLabels("wave surfing travel"); len(got) != 0 {
-		t.Fatalf("av 子串误伤: %#v", got)
-	}
-	if got := m.MatchLabels("经典 AV 合集"); !reflect.DeepEqual(got, []string{"AV"}) {
-		t.Fatalf("整词 av 未命中: %#v", got)
+	if got := m.MatchLabels("wave surfing travel"); !reflect.DeepEqual(got, []string{"AV"}) {
+		t.Fatalf("短词包含词未按子串命中: %#v", got)
 	}
 }
 
-func TestMatcherExcludesMaskText(t *testing.T) {
+func TestMatcherKeywordMatchesWithoutExcludes(t *testing.T) {
 	m := NewMatcher([]TagRule{
-		{Label: "人妻", Rule: Rule{Keywords: []string{"人妻", "老婆", "太太"}, Excludes: []string{"老婆饼"}}},
+		{Label: "人妻", Rule: Rule{Keywords: []string{"人妻", "老婆", "太太"}}},
 	})
-	if got := m.MatchLabels("老婆饼制作教学"); len(got) != 0 {
-		t.Fatalf("排除词未生效: %#v", got)
-	}
-	// 排除区域之外的命中不受影响。
-	if got := m.MatchLabels("老婆饼与人妻日记"); !reflect.DeepEqual(got, []string{"人妻"}) {
-		t.Fatalf("排除词过度抑制: %#v", got)
-	}
-	if got := m.MatchLabels("隔壁老婆的秘密"); !reflect.DeepEqual(got, []string{"人妻"}) {
+	if got := m.MatchLabels("老婆饼制作教学"); !reflect.DeepEqual(got, []string{"人妻"}) {
 		t.Fatalf("正常命中丢失: %#v", got)
 	}
 }
@@ -167,13 +128,11 @@ func TestMatcherAVCodeKnownPrefixes(t *testing.T) {
 	}
 }
 
-func TestRuleFromAliasesSplitsWordsAndKeywords(t *testing.T) {
+func TestRuleFromAliasesUsesKeywords(t *testing.T) {
 	rule := RuleFromAliases("臀", []string{"翘臀", "ass", "屁股"})
-	if !reflect.DeepEqual(rule.Words, []string{"臀", "ass"}) {
-		t.Fatalf("words = %#v, want [臀 ass]", rule.Words)
-	}
-	if !reflect.DeepEqual(rule.Keywords, []string{"翘臀", "屁股"}) {
-		t.Fatalf("keywords = %#v, want [翘臀 屁股]", rule.Keywords)
+	want := []string{"臀", "翘臀", "ass", "屁股"}
+	if !reflect.DeepEqual(rule.Keywords, want) {
+		t.Fatalf("keywords = %#v, want %#v", rule.Keywords, want)
 	}
 }
 

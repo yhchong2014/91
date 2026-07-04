@@ -14,16 +14,10 @@
 //	         honored within this call)
 //	Phase 4: full-library duplicate video maintenance:
 //	         exact size+sampled_sha256 dedupe, then title/duration/thumbnail dedupe
-//	Phase 5: tag maintenance:
-//	         refresh video assignments from the existing tag pool only
 //
-// A 6h soft deadline guards each pipeline run; phases check deadline at their
-// boundaries and exit cleanly if exceeded (no in-flight ffmpeg / upload is
-// killed mid-task).
-// 已废弃：这条软超时机制已在 2026-05 移除。流水线现在会一直跑到所有 phase
-// 完成或进程被停止；yaml 里的 nightly.max_duration 字段被忽略。理由：单条
-// phase 里的网盘风控冷却可能长达数十分钟（115 列目录 10min × N），强制 6h
-// 切换会让被打断的子任务延后到下一晚，体感上反而更糟。
+// The pipeline runs until all phases finish, the process exits, or an admin
+// stop request cancels the run. Provider cooldowns may make a single phase take
+// a long time, so there is no fixed duration cutoff.
 //
 // State persistence: the date string of the most recent successfully started
 // run is stored in catalog.settings under the key "nightly.last_run_date".
@@ -59,11 +53,7 @@ type SettingStore interface {
 // dependency graph clean.
 type Config struct {
 	Settings SettingStore
-	CronHour int // 0-23; default 1 (01:00)
-	// MaxDuration 已废弃。早期作为流水线总耗时软超时（默认 6h），到点不再启动后
-	// 续 phase。当前实现忽略此字段 —— 流水线一直跑到所有 phase 完成或 ctx 取消。
-	// 字段保留是为了让旧 config.yaml 加载时不报 "unknown field"。
-	MaxDuration time.Duration
+	CronHour int // default 1 (01:00)
 
 	// ListScanTargets returns the drive IDs to run Phase 1 on, in deterministic
 	// order. Should exclude crawler and localupload drives.
@@ -94,8 +84,9 @@ type Config struct {
 	// deletes cloud source files.
 	RunDedupeAssetCleanup func(ctx context.Context) error
 
-	// RunTagMaintenance refreshes existing tag matches. It must not create tag
-	// definitions from titles or filenames.
+	// RunTagMaintenance is optional. The main server leaves this nil because tag
+	// matching is event-driven: new videos and administrator tag edits refresh
+	// labels immediately.
 	RunTagMaintenance func(ctx context.Context) error
 
 	// Now is injected for tests; nil → time.Now.
@@ -126,7 +117,7 @@ type Runner struct {
 
 // New constructs a Runner. cfg is shallow-copied; defaults are applied.
 func New(cfg Config) *Runner {
-	if cfg.CronHour < 0 || cfg.CronHour > 23 {
+	if cfg.CronHour <= 0 || cfg.CronHour > 23 {
 		cfg.CronHour = 1
 	}
 	if cfg.Now == nil {
@@ -322,13 +313,13 @@ func (r *Runner) markFinished(finished time.Time) {
 	r.currentCancel = nil
 }
 
-// runPipeline executes the three phases. It returns when the pipeline finishes
-// OR ctx is done (deadline / cancel). Errors are logged but not propagated —
+// runPipeline executes the maintenance phases. It returns when the pipeline
+// finishes or ctx is done. Errors are logged but not propagated —
 // each phase is best-effort; downstream phases still attempt to run unless ctx
 // is dead.
 func (r *Runner) runPipeline(ctx context.Context) {
 	// ---------- Phase 1 ----------
-	if r.checkDeadline(ctx, "phase 1") {
+	if r.shouldStop(ctx, "phase 1") {
 		return
 	}
 	scanIDs := []string{}
@@ -354,7 +345,7 @@ func (r *Runner) runPipeline(ctx context.Context) {
 	}
 
 	// ---------- Phase 2 ----------
-	if r.checkDeadline(ctx, "phase 2") {
+	if r.shouldStop(ctx, "phase 2") {
 		return
 	}
 	crawlerIDs := []string{}
@@ -382,7 +373,7 @@ func (r *Runner) runPipeline(ctx context.Context) {
 	}
 
 	// ---------- Phase 3 ----------
-	if r.checkDeadline(ctx, "phase 3") {
+	if r.shouldStop(ctx, "phase 3") {
 		return
 	}
 	log.Printf("[nightly] phase 3: crawler upload")
@@ -396,10 +387,7 @@ func (r *Runner) runPipeline(ctx context.Context) {
 	r.runTagMaintenancePhase(ctx)
 }
 
-// checkDeadline returns true when ctx is already done (runner shutting down or
-// upstream cancel) and the caller should bail. 已不再有"流水线总耗时上限"语义；
-// 函数名保留是为了改动最小，仅作 ctx 取消检测。
-func (r *Runner) checkDeadline(ctx context.Context, phase string) bool {
+func (r *Runner) shouldStop(ctx context.Context, phase string) bool {
 	if err := ctx.Err(); err != nil {
 		log.Printf("[nightly] %s: ctx done (%v), bailing out", phase, err)
 		return true
@@ -420,20 +408,20 @@ func (r *Runner) waitIdle(ctx context.Context, phase string) error {
 }
 
 func (r *Runner) runTagMaintenancePhase(ctx context.Context) {
-	if r.checkDeadline(ctx, "phase 5") {
-		return
-	}
-	log.Printf("[nightly] phase 5: tag maintenance")
 	if r.cfg.RunTagMaintenance == nil {
 		return
 	}
+	if r.shouldStop(ctx, "phase 5") {
+		return
+	}
+	log.Printf("[nightly] phase 5: tag maintenance")
 	if err := r.cfg.RunTagMaintenance(ctx); err != nil {
 		log.Printf("[nightly] phase 5 tag maintenance: %v", err)
 	}
 }
 
 func (r *Runner) runDedupeAssetCleanupPhase(ctx context.Context) {
-	if r.checkDeadline(ctx, "phase 4") {
+	if r.shouldStop(ctx, "phase 4") {
 		return
 	}
 	if r.cfg.RunDedupeAssetCleanup == nil {

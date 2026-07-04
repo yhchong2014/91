@@ -15,23 +15,33 @@ func packMatcher(t *testing.T) *tagging.Matcher {
 	return tagging.NewMatcher(rules)
 }
 
-func TestPackMatchesEnglishTerms(t *testing.T) {
+func TestPackMatchesConfiguredTerms(t *testing.T) {
 	m := packMatcher(t)
-	got := m.MatchLabels("backshot oral-sex big boobs big ass wife college student.mp4")
-	want := map[string]bool{"后入": true, "口交": true, "奶子": true, "美臀": true, "人妻": true, "女大": true}
-	assertLabelSet(t, got, want)
+	cases := map[string]string{
+		"大一学妹研究生": "女大",
+		"大奶揉胸揉奶":  "奶子",
+		"少妇已婚":    "人妻",
+		"水手服空姐护士": "制服",
+		"翘臀蜜桃臀":   "美臀",
+		"口活深喉吞精":  "口交",
+		"后入":      "后入",
+	}
+	for text, want := range cases {
+		got := m.MatchLabels(text)
+		assertLabelSet(t, got, map[string]bool{want: true})
+	}
 }
 
-func TestPackMatchesChineseTerms(t *testing.T) {
+func TestPackNoLongerMatchesRemovedDefaults(t *testing.T) {
 	m := packMatcher(t)
-	got := m.MatchLabels("背后式揉乳口活蜜桃臀少妇大学生.mp4")
-	want := map[string]bool{"后入": true, "奶子": true, "口交": true, "美臀": true, "人妻": true, "女大": true}
-	assertLabelSet(t, got, want)
+	if got := m.MatchLabels("backshot oral-sex big boobs big ass wife college student 背后式 揉乳 大学生"); len(got) != 0 {
+		t.Fatalf("removed defaults should not match: %#v", got)
+	}
 }
 
-func TestPackSingleCharProtection(t *testing.T) {
+func TestPackDoesNotUseHighRiskSingleCharTerms(t *testing.T) {
 	m := packMatcher(t)
-	// "牛奶"、"胸怀"：单字 "奶"/"胸" 不应子串误伤。
+	// 内置规则不配置 "奶"/"胸" 这类高误伤单字，避免子串误伤。
 	if got := m.MatchLabels("牛奶广告拍摄花絮"); len(got) != 0 {
 		t.Fatalf("误伤: %#v", got)
 	}

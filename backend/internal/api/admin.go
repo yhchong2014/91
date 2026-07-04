@@ -25,6 +25,7 @@ import (
 	"github.com/video-site/backend/internal/drives/p123"
 	"github.com/video-site/backend/internal/drives/scriptcrawler"
 	"github.com/video-site/backend/internal/drives/wopan"
+	"github.com/video-site/backend/internal/tagging"
 )
 
 type AdminServer struct {
@@ -2544,12 +2545,11 @@ func (a *AdminServer) handleListTags(w http.ResponseWriter, r *http.Request) {
 }
 
 type createTagReq struct {
-	Label   string   `json:"label"`
-	Aliases []string `json:"aliases"`
+	Label string `json:"label"`
 }
 
 type updateTagReq struct {
-	Aliases []string `json:"aliases"`
+	MatchRules tagging.Rule `json:"matchRules"`
 }
 
 func (a *AdminServer) handleCreateTag(w http.ResponseWriter, r *http.Request) {
@@ -2558,7 +2558,7 @@ func (a *AdminServer) handleCreateTag(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	classified, err := a.Catalog.CreateTagAndClassify(r.Context(), body.Label, body.Aliases, "user")
+	classified, err := a.Catalog.CreateTagAndClassify(r.Context(), body.Label, nil, "user")
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -2580,7 +2580,7 @@ func (a *AdminServer) handleUpdateTag(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	tag, err := a.Catalog.UpdateTag(r.Context(), id, body.Aliases)
+	tag, err := a.Catalog.UpdateTag(r.Context(), id, body.MatchRules)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeErr(w, http.StatusNotFound, err)
@@ -2589,12 +2589,11 @@ func (a *AdminServer) handleUpdateTag(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	classified, err := a.Catalog.ClassifyTagByID(r.Context(), id)
-	if err != nil {
+	if err := a.Catalog.RunPostStartupTagMaintenance(r.Context()); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tag": tag, "classified": classified})
+	writeJSON(w, http.StatusOK, map[string]any{"tag": tag})
 }
 
 func (a *AdminServer) handleStartTagRetag(w http.ResponseWriter, _ *http.Request) {

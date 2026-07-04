@@ -2610,7 +2610,7 @@ func TestHandleCreateTagClassifiesExistingVideos(t *testing.T) {
 	}
 }
 
-func TestHandleUpdateTagSavesAliasesAndClassifies(t *testing.T) {
+func TestHandleUpdateTagSavesMatchRulesAndClassifies(t *testing.T) {
 	ctx := context.Background()
 	cat, err := catalog.Open(t.TempDir() + "/catalog.db")
 	if err != nil {
@@ -2642,7 +2642,7 @@ func TestHandleUpdateTagSavesAliasesAndClassifies(t *testing.T) {
 		"/admin/api/tags/1",
 		"id",
 		strconv.FormatInt(tagID, 10),
-		strings.NewReader(`{"aliases":["custom matching phrase"],"matchRules":{"keywords":["ignored"]}}`),
+		strings.NewReader(`{"matchRules":{"keywords":["custom matching phrase"]}}`),
 	)
 	rr := httptest.NewRecorder()
 	(&AdminServer{Catalog: cat}).handleUpdateTag(rr, req)
@@ -2650,18 +2650,37 @@ func TestHandleUpdateTagSavesAliasesAndClassifies(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
 	var got struct {
-		Tag        catalog.Tag `json:"tag"`
-		Classified int         `json:"classified"`
+		Tag catalog.Tag `json:"tag"`
 	}
 	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.Classified != 1 || len(got.Tag.MatchRules.Keywords) != 0 || len(got.Tag.Aliases) != 1 {
+	if len(got.Tag.MatchRules.Keywords) != 1 || len(got.Tag.Aliases) != 0 {
 		t.Fatalf("response = %#v", got)
 	}
 	video, err := cat.GetVideo(ctx, "rule-video")
 	if err != nil || len(video.Tags) != 1 || video.Tags[0] != "展示标签" {
 		t.Fatalf("classified video = %#v, %v", video, err)
+	}
+
+	req = requestWithRouteParam(
+		http.MethodPut,
+		"/admin/api/tags/1",
+		"id",
+		strconv.FormatInt(tagID, 10),
+		strings.NewReader(`{"matchRules":{"keywords":["other phrase"]}}`),
+	)
+	rr = httptest.NewRecorder()
+	(&AdminServer{Catalog: cat}).handleUpdateTag(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("second update status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	video, err = cat.GetVideo(ctx, "rule-video")
+	if err != nil {
+		t.Fatalf("get video after second update: %v", err)
+	}
+	if len(video.Tags) != 0 {
+		t.Fatalf("tag rule deletion did not refresh video tags: %#v", video.Tags)
 	}
 }
 

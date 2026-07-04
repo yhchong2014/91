@@ -194,8 +194,18 @@ ON CONFLICT(id) DO UPDATE SET
 	if err != nil {
 		return err
 	}
-	if !existed && len(storedTags) > 0 {
-		return c.replaceVideoTags(ctx, v.ID, storedTags, "manual", true, true)
+	if !existed {
+		if len(storedTags) > 0 {
+			return c.replaceVideoTags(ctx, v.ID, storedTags, "manual", true, true)
+		}
+		assignments, err := c.MatchTagAssignments(ctx, v.Title, v.FileName, v.Author, v.DirName)
+		if err != nil {
+			return err
+		}
+		if len(assignments) > 0 {
+			_, err = c.ReplaceAutoVideoTags(ctx, v.ID, assignments)
+			return err
+		}
 	}
 	return nil
 }

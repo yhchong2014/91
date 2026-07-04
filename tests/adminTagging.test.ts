@@ -20,12 +20,15 @@ const videosPageSource = readFileSync(
 );
 
 test("admin tags keep builtin, user, and auto-generated tag management", () => {
-  assert.doesNotMatch(apiSource, /export type TagMatchRules/);
+  assert.match(apiSource, /export type TagMatchRules/);
   assert.match(apiSource, /matchRules\?: \{/);
+  assert.match(apiSource, /keywords\?: string\[\]/);
+  assert.doesNotMatch(apiSource, /\n\s+words\?: string\[\];/);
+  assert.doesNotMatch(apiSource, /\n\s+excludes\?: string\[\];/);
   assert.match(apiSource, /matchAvCode\?: boolean/);
   assert.match(apiSource, /avCodePrefixes\?: string\[\]/);
   assert.match(apiSource, /export function updateTag/);
-  assert.match(apiSource, /updateTag\(id: number, aliases: string\[\]\)/);
+  assert.match(apiSource, /updateTag\(id: number, matchRules: TagMatchRules\)/);
   assert.doesNotMatch(apiSource, /export function startTagRetag/);
   assert.doesNotMatch(apiSource, /export function getTagJobStatus/);
   assert.doesNotMatch(apiSource, /autoGenerateTagsEnabled: boolean/);
@@ -36,6 +39,13 @@ test("admin tags keep builtin, user, and auto-generated tag management", () => {
   assert.match(tagsPageSource, /<div className="admin-tags-board">/);
   assert.match(tagsPageSource, /<aside className="admin-tags-filter-panel" aria-label="标签分类">/);
   assert.match(tagsPageSource, /<div className="admin-tags-main">/);
+  assert.ok(
+    tagsPageSource.indexOf('className="admin-tags-search"') <
+      tagsPageSource.indexOf('className="admin-tags-filter-panel"'),
+    "tag search should appear before source filter"
+  );
+  assert.match(tagsPageSource, /placeholder="搜索标签名或包含词"/);
+  assert.doesNotMatch(tagsPageSource, /搜索标签名或规则词/);
   assert.match(tagsPageSource, /admin-tags-filter-tab__text/);
   assert.doesNotMatch(tagsPageSource, /admin-tags-filter-tab__count/);
   assert.doesNotMatch(tagsPageSource, /aria-label=\{`\$\{label\} \(\$\{count\}\)`\}/);
@@ -43,9 +53,24 @@ test("admin tags keep builtin, user, and auto-generated tag management", () => {
   assert.match(tagsPageSource, /添加标签/);
   assert.match(tagsPageSource, /onClick=\{openCreateModal\}/);
   assert.match(tagsPageSource, /className="admin-btn"\s+onClick=\{openCreateModal\}/);
+  assert.match(tagsPageSource, /const createLabelExists = useMemo/);
+  assert.match(tagsPageSource, /tag\.label\.trim\(\)\.toLowerCase\(\) === cleanLabel/);
+  assert.match(tagsPageSource, /if \(createLabelExists\) return;/);
+  assert.match(tagsPageSource, /disabled=\{saving \|\| !label\.trim\(\) \|\| createLabelExists\}/);
+  assert.match(tagsPageSource, /aria-label="输入标签名"/);
+  assert.match(tagsPageSource, /aria-describedby=\{createLabelExists \? "admin-tag-create-warning" : undefined\}/);
+  assert.match(tagsPageSource, /placeholder="输入标签名"/);
+  assert.match(tagsPageSource, /className=\{`admin-tag-create-warning\$\{createLabelExists \? " is-visible" : ""\}`\}/);
+  assert.match(tagsPageSource, /aria-hidden=\{!createLabelExists\}/);
+  assert.match(tagsPageSource, /当前标签已存在/);
+  assert.match(tagsPageSource, /\{saving \? "添加中\.\.\." : "确认"\}/);
+  assert.doesNotMatch(tagsPageSource, /<label htmlFor="admin-tag-label">标签名<\/label>/);
+  assert.doesNotMatch(tagsPageSource, /placeholder="例如：清纯"/);
   assert.doesNotMatch(tagsPageSource, /<Plus size=\{13\} \/> 新增标签/);
   assert.doesNotMatch(tagsPageSource, /className="admin-btn is-primary"\s+onClick=\{openCreateModal\}/);
   assert.match(tagsPageSource, /form="admin-create-tag-form"/);
+  assert.match(tagsPageSource, /confirmText="确认"/);
+  assert.doesNotMatch(tagsPageSource, /confirmText="确认删除"/);
   assert.doesNotMatch(tagsPageSource, /admin-card__title[\s\S]*新增标签/);
   assert.doesNotMatch(tagsPageSource, /系统不会再从文件名或标题自动创建标签/);
   assert.doesNotMatch(tagsPageSource, /包含词（子串）/);
@@ -67,18 +92,24 @@ test("admin tags keep builtin, user, and auto-generated tag management", () => {
   assert.match(tagsPageSource, /tag\.crawlerOwned \|\| tag\.source === "generated" \? "generated" : tag\.source/);
   assert.match(tagsPageSource, /source === "crawler" \|\| source === "generated"/);
   assert.match(tagsPageSource, /tagCardSourceLabel\(tag\)/);
+  assert.match(tagsPageSource, /data-source=\{tagCardSourceKey\(tag\)\}/);
   assert.doesNotMatch(tagsPageSource, /admin-tag-card__id/);
   assert.doesNotMatch(tagsPageSource, /#\{tag\.id\}/);
   assert.match(tagsPageSource, /function tagCardSourceLabel/);
+  assert.match(tagsPageSource, /function tagCardSourceKey/);
   assert.match(tagsPageSource, /tag\.crawlerOwned \|\| tag\.source === "crawler"/);
   assert.match(tagsPageSource, /return "爬虫脚本"/);
+  assert.match(tagsPageSource, /return "crawler"/);
   assert.match(tagsPageSource, /tag\.source === "generated"/);
   assert.match(tagsPageSource, /return "AV"/);
+  assert.match(tagsPageSource, /return "av"/);
   assert.doesNotMatch(tagsPageSource, /const displayAliases = tagDisplayAliases\(tag\);/);
   assert.doesNotMatch(tagsPageSource, /admin-tag-card__aliases/);
   assert.doesNotMatch(tagsPageSource, /admin-tag-card__alias-pill/);
   assert.doesNotMatch(tagsPageSource, /function tagDisplayAliases/);
-  assert.match(tagsPageSource, /tag\.matchRules\?\.avCodePrefixes/);
+  assert.match(tagsPageSource, /avCodePrefixes: joinRuleTerms\(rules\.avCodePrefixes\)/);
+  assert.match(tagsPageSource, /tagRuleTerms\(t\)\.some/);
+  assert.doesNotMatch(tagsPageSource, /admin-tag-card__keywords|admin-tag-card__keyword-pill|tagKeywordTerms/);
   assert.doesNotMatch(tagsPageSource, /function uniqueDisplayAliases/);
   assert.doesNotMatch(tagsPageSource, /系统内置车牌已自动参与匹配/);
   assert.match(tagsPageSource, /const TAG_DISPLAY_GROUP_ORDER: Record<string, number>/);
@@ -94,6 +125,9 @@ test("admin tags keep builtin, user, and auto-generated tag management", () => {
   assert.doesNotMatch(tagsPageSource, /return "旧数据"/);
   assert.doesNotMatch(tagsPageSource, /tag\.source !== "system"/);
   assert.doesNotMatch(tagsPageSource, /tag\.source === "system"\) return/);
+  assert.match(adminCss, /\.admin-tag-card\.is-selectable:focus-visible\s*\{[^}]*outline\s*:\s*2px solid var\(--border-accent\)/s);
+  assert.doesNotMatch(adminCss, /\.admin-tag-card\.is-selectable:focus-within\s*\{[^}]*box-shadow/s);
+  assert.match(adminCss, /\.admin-tag-card:not\(\.is-selectable\):hover\s*\{/);
 });
 
 test("admin tags batch delete runs deletions sequentially", () => {
@@ -126,47 +160,82 @@ test("admin tag dialogs use the lightweight modal style", () => {
   );
   assert.match(
     tagsPageSource,
-    /title="新增标签"[\s\S]*?className="admin-modal--tag-rules admin-modal--tag-dialog"/
+    /title="新增标签"[\s\S]*?className="admin-modal--tag-rules admin-modal--tag-dialog admin-modal--tag-create"/
   );
-  assert.match(tagsPageSource, /className="admin-modal--tag-rules admin-modal--tag-dialog"/);
+  assert.match(tagsPageSource, /className="admin-modal--tag-rules admin-modal--tag-dialog admin-modal--tag-create"/);
   assert.match(tagsPageSource, /restoreFocus=\{false\}/);
   assert.match(adminCss, /\.admin-modal--tag-dialog\s*\{[^}]*border\s*:\s*0/s);
   assert.match(adminCss, /\.admin-modal--tag-dialog \.admin-modal__header\s*\{[^}]*border-bottom\s*:\s*0/s);
   assert.match(adminCss, /\.admin-modal--tag-dialog \.admin-modal__footer\s*\{[^}]*border-top\s*:\s*0/s);
+  assert.match(adminCss, /\.admin-modal--tag-create \.admin-modal__body\s*\{[^}]*padding-bottom\s*:\s*6px/s);
+  assert.match(adminCss, /\.admin-modal--tag-create \.admin-modal__footer\s*\{[^}]*padding-top\s*:\s*6px/s);
+  assert.match(adminCss, /\.admin-tag-card__source-badge\s*\{[^}]*font-weight\s*:\s*400/s);
+  assert.match(adminCss, /\.admin-tag-card__source-badge\s*\{[^}]*background\s*:\s*var\(--tag-source-bg/s);
+  assert.doesNotMatch(adminCss, /\.admin-tag-card__source-badge\s*\{[^}]*box-shadow/s);
+  assert.doesNotMatch(adminCss, /--tag-source-border/);
+  assert.match(adminCss, /\.admin-tag-card__source-badge\[data-source="user"\]\s*\{[^}]*--tag-source-bg\s*:\s*rgba\(74,\s*222,\s*128,\s*0\.16\)/s);
+  assert.match(adminCss, /\.admin-tag-card__source-badge\[data-source="builtin"\]\s*\{[^}]*--tag-source-bg\s*:\s*rgba\(96,\s*165,\s*250,\s*0\.16\)/s);
+  assert.match(adminCss, /\.admin-tag-card__source-badge\[data-source="av"\]/);
+  assert.match(adminCss, /\.admin-tag-card__source-badge\[data-source="av"\][\s\S]*?--tag-source-bg\s*:\s*rgba\(251,\s*191,\s*36,\s*0\.17\)/s);
+  assert.match(adminCss, /\.admin-tag-card__source-badge\[data-source="crawler"\]\s*\{[^}]*--tag-source-bg\s*:\s*rgba\(196,\s*181,\s*253,\s*0\.18\)/s);
+  assert.match(adminCss, /\.admin-tag-create-row\s*\{[^}]*position\s*:\s*relative/s);
+  assert.match(adminCss, /\.admin-tag-create-warning\s*\{[^}]*color\s*:\s*var\(--danger\)/s);
+  assert.match(adminCss, /\.admin-tag-create-warning\s*\{[^}]*position\s*:\s*absolute/s);
+  assert.doesNotMatch(adminCss, /\.admin-tag-create-warning\s*\{[^}]*min-height/s);
+  assert.match(adminCss, /\.admin-tag-create-warning\s*\{[^}]*visibility\s*:\s*hidden/s);
+  assert.match(adminCss, /\.admin-tag-create-warning\.is-visible\s*\{[^}]*visibility\s*:\s*visible/s);
   assert.match(adminCss, /\.admin-modal--tag-delete-confirm \.admin-confirm\s*\{[^}]*display\s*:\s*block/s);
 });
 
-test("admin tag edit dialog shows aliases as pills outside the input", () => {
+test("admin tag edit dialog edits match rules directly", () => {
   const editModalStart = tagsPageSource.indexOf("function EditTagModal");
   const editModalSource = tagsPageSource.slice(editModalStart);
   assert.ok(editModalStart >= 0, "EditTagModal should exist");
-  assert.match(
-    editModalSource,
-    /const \[aliases, setAliases\] = useState\(\(\) => editTagAliases\(tag\)\)/
-  );
-  assert.match(editModalSource, /const \[aliasDraft, setAliasDraft\] = useState\(""\)/);
-  assert.match(editModalSource, /const aliasAdditions = pendingAliasAdditions\(aliasDraft, tag\.label, aliases\);/);
-  assert.match(editModalSource, /const duplicateAliases = duplicateAliasInputs\(aliasDraft, tag\.label, aliases\);/);
+  assert.match(editModalSource, /const \[draft, setDraft\] = useState\(\(\) => tagRuleDraft\(tag\)\)/);
+  assert.match(editModalSource, /const parsedRules = matchRulesFromDraft\(nextDraft, isAV\);/);
   assert.match(editModalSource, /title=\{tag\.label\}/);
-  assert.match(editModalSource, /\{saving \? "保存中\.\.\." : "保存"\}/);
-  assert.match(editModalSource, /className="admin-tag-alias-list"/);
-  assert.match(editModalSource, /className="admin-tag-alias-pill"/);
-  assert.match(editModalSource, /aria-label=\{`移除别名 \$\{alias\}`\}/);
-  assert.match(editModalSource, /value=\{aliasDraft\}/);
-  assert.match(editModalSource, /当前标签已存在/);
-  assert.doesNotMatch(editModalSource, /已存在：\{duplicateAliases\.join\("、"\)\}/);
-  assert.match(editModalSource, /disabled=\{saving \|\| aliasAdditions\.length === 0\}/);
-  assert.match(editModalSource, /await api\.updateTag\(tag\.id, aliases\);/);
-  assert.doesNotMatch(editModalSource, /useState\(\(tag\.aliases \?\? \[\]\)\.join\(", "\)\)/);
-  assert.doesNotMatch(editModalSource, /value=\{aliases\}/);
-  assert.doesNotMatch(editModalSource, /admin-form__help/);
-  assert.match(adminCss, /\.admin-tag-alias-list\s*\{[^}]*display\s*:\s*flex/s);
-  assert.match(adminCss, /\.admin-tag-alias-list\s*\{[^}]*gap\s*:\s*8px/s);
-  assert.match(adminCss, /\.admin-tag-alias-pill\s*\{[^}]*background\s*:\s*transparent/s);
-  assert.match(adminCss, /\.admin-tag-alias-pill\s*\{[^}]*border\s*:\s*1px solid var\(--border-subtle\)/s);
-  assert.match(adminCss, /\.admin-tag-alias-warning\s*\{[^}]*color\s*:\s*var\(--danger\)/s);
-  assert.match(tagsPageSource, /function editTagAliases\(tag: api\.AdminTag\): string\[\]/);
-  assert.match(tagsPageSource, /\[\.\.\.\(tag\.matchRules\?\.avCodePrefixes \?\? \[\]\), \.\.\.\(tag\.aliases \?\? \[\]\)\]/);
+  assert.doesNotMatch(editModalSource, /footer=\{[\s\S]*?保存中|footer=\{[\s\S]*?取消/);
+  assert.match(editModalSource, /inputId="admin-tag-rule-keywords"/);
+  assert.match(editModalSource, /function KeywordPillEditor/);
+  assert.match(editModalSource, /function PrefixPillEditor/);
+  assert.match(editModalSource, /function RulePillEditor/);
+  assert.match(editModalSource, /onCommit=\{\(value\) => void persistDraft\(\{ \.\.\.draft, keywords: value \}\)\}/);
+  assert.match(editModalSource, /function singleRuleTerm/);
+  assert.match(editModalSource, /inputLabel="添加包含词"/);
+  assert.match(editModalSource, /inputLabel="添加车牌前缀"/);
+  assert.match(editModalSource, /const showDuplicateWarning = pendingTerm !== "" && pendingExists;/);
+  assert.match(editModalSource, /aria-describedby=\{showDuplicateWarning \? warningId : undefined\}/);
+  assert.match(editModalSource, /当前包含词已存在/);
+  assert.match(editModalSource, /当前车牌前缀已存在/);
+  assert.match(editModalSource, /<div className="admin-form__row">\s*<KeywordPillEditor/);
+  assert.match(editModalSource, /<div className="admin-form__row">\s*<PrefixPillEditor/);
+  assert.doesNotMatch(editModalSource, /<label htmlFor="admin-tag-rule-keywords">包含词<\/label>/);
+  assert.doesNotMatch(editModalSource, /番号前缀|<textarea/);
+  assert.match(editModalSource, /className="admin-tag-rule-keyword-list"/);
+  assert.match(editModalSource, /className="admin-tag-rule-keyword-pill"/);
+  assert.match(editModalSource, /className="admin-tag-rule-keyword-input-row"/);
+  assert.doesNotMatch(editModalSource, /admin-tag-rule-words|整词匹配/);
+  assert.doesNotMatch(editModalSource, /admin-tag-rule-excludes|排除词/);
+  assert.match(editModalSource, /inputId="admin-tag-rule-prefixes"/);
+  assert.match(editModalSource, /onCommit=\{\(value\) => void persistDraft\(\{ \.\.\.draft, avCodePrefixes: value \}\)\}/);
+  assert.match(editModalSource, /splitTerms=\{splitPrefixTerms\}/);
+  assert.match(editModalSource, /allowEmpty/);
+  assert.match(editModalSource, /await api\.updateTag\(tag\.id, parsedRules\);/);
+  assert.doesNotMatch(editModalSource, /disabled=\{saving \|\| !canSave\}/);
+  assert.doesNotMatch(editModalSource, /aliasDraft|aliases|editTagAliases|pendingAliasAdditions|duplicateAliasInputs/);
+  assert.doesNotMatch(adminCss, /admin-tag-alias/);
+  assert.match(adminCss, /\.admin-tag-rule-keyword-list\s*\{[^}]*padding\s*:\s*2px 0/s);
+  assert.match(adminCss, /\.admin-tag-rule-keyword-list\s*\{[^}]*transform\s*:\s*translateY\(-6px\)/s);
+  assert.match(adminCss, /\.admin-tag-rule-keyword-pill\s*\{[^}]*background\s*:\s*transparent/s);
+  assert.match(adminCss, /\.admin-tag-rule-keyword-warning\s*\{[^}]*color\s*:\s*var\(--danger\)/s);
+  assert.doesNotMatch(adminCss, /\.admin-modal--tag-dialog \.admin-modal__header::after/);
+  assert.match(adminCss, /\.admin-modal--tag-dialog \.admin-modal__body\s*\{[^}]*padding\s*:\s*14px 20px 24px/s);
+  assert.doesNotMatch(adminCss, /\.admin-tag-rule-keyword-input-row input\s*\{/);
+  assert.match(adminCss, /\.admin-tag-rule-form textarea\s*\{[^}]*min-height\s*:\s*72px/s);
+  assert.match(tagsPageSource, /function tagRuleDraft\(tag: api\.AdminTag\): RuleDraft/);
+  assert.match(tagsPageSource, /function matchRulesFromDraft\(draft: RuleDraft, isAV: boolean\): api\.TagMatchRules/);
+  assert.match(tagsPageSource, /function splitRuleTerms/);
+  assert.match(tagsPageSource, /function splitPrefixTerms/);
 });
 
 test("admin videos render tag assignment source and evidence", () => {

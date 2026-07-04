@@ -682,8 +682,8 @@ export function regenPreview(id: string) {
 export type AdminTag = {
   id: number;
   label: string;
-  aliases?: string[];
   matchRules?: {
+    keywords?: string[];
     matchAvCode?: boolean;
     avCodePrefixes?: string[];
   };
@@ -692,23 +692,25 @@ export type AdminTag = {
   crawlerOwned?: boolean;
 };
 
+export type TagMatchRules = NonNullable<AdminTag["matchRules"]>;
+
 export function listTags() {
   return request<AdminTag[]>("/tags");
 }
 
-export function createTag(label: string, aliases: string[]) {
+export function createTag(label: string) {
   return request<{ label: string; classified: number }>("/tags", {
     method: "POST",
-    body: JSON.stringify({ label, aliases }),
+    body: JSON.stringify({ label }),
   });
 }
 
-export function updateTag(id: number, aliases: string[]) {
-  return request<{ tag: AdminTag; classified: number }>(
+export function updateTag(id: number, matchRules: TagMatchRules) {
+  return request<{ tag: AdminTag }>(
     `/tags/${encodeURIComponent(String(id))}`,
     {
       method: "PUT",
-      body: JSON.stringify({ aliases }),
+      body: JSON.stringify({ matchRules }),
     }
   );
 }

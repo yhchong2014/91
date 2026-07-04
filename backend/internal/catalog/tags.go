@@ -42,6 +42,7 @@ const (
 	settingTagRulesVersion         = "tags.rules_version"
 	settingAutoGenerateTagsEnabled = "tags.auto_generate_enabled"
 	settingAVCodeMatchingDisabled  = "tags.av_code_matching_disabled"
+	settingBuiltinTagPackInit      = "tags.builtin_pack_initialized_v1"
 )
 
 const avSeriesOrigin = "av_series"
@@ -49,7 +50,7 @@ const avSeriesOrigin = "av_series"
 type Tag struct {
 	ID           int64        `json:"id"`
 	Label        string       `json:"label"`
-	Aliases      []string     `json:"aliases,omitempty"`
+	Aliases      []string     `json:"-"`
 	MatchRules   tagging.Rule `json:"matchRules"`
 	Source       string       `json:"source"`
 	Count        int          `json:"count"`
@@ -123,6 +124,9 @@ func (c *Catalog) migrate(ctx context.Context) error {
 	}
 	// tags.match_rules：标签匹配规则 JSON；video_tags.evidence：命中证据。
 	if err := c.addColumnIfMissing(ctx, "tags", "match_rules", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		return err
+	}
+	if err := c.removeRetiredTagRuleFields(ctx); err != nil {
 		return err
 	}
 	if err := c.addColumnIfMissing(ctx, "tags", "origin", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -262,7 +266,7 @@ CREATE TABLE IF NOT EXISTS deleted_videos (
 	if err := c.demoteRetiredBuiltinTags(ctx); err != nil {
 		return err
 	}
-	if err := c.seedBuiltinTagPack(ctx); err != nil {
+	if err := c.initializeBuiltinTagPackOnce(ctx); err != nil {
 		return err
 	}
 	if err := c.removeAutomaticTaggingArtifacts(ctx); err != nil {
@@ -294,7 +298,7 @@ CREATE TABLE IF NOT EXISTS deleted_videos (
 // generated labels, and re-matches videos. The only generated labels it may
 // add are AV series labels while the built-in AV mechanism is enabled.
 func (c *Catalog) RunPostStartupTagMaintenance(ctx context.Context) error {
-	if err := c.seedBuiltinTagPack(ctx); err != nil {
+	if err := c.removeRetiredTagRuleFields(ctx); err != nil {
 		return err
 	}
 	if err := c.removeAutomaticTaggingArtifacts(ctx); err != nil {
@@ -322,6 +326,59 @@ func (c *Catalog) RunPostStartupTagMaintenance(ctx context.Context) error {
 			return err
 		}
 	}
+}
+
+func (c *Catalog) removeRetiredTagRuleFields(ctx context.Context) error {
+	rows, err := c.db.QueryContext(ctx, `SELECT id, COALESCE(match_rules, '{}') FROM tags`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type update struct {
+		id    int64
+		rules string
+	}
+	var updates []update
+	for rows.Next() {
+		var id int64
+		var raw string
+		if err := rows.Scan(&id, &raw); err != nil {
+			return err
+		}
+		if !strings.Contains(raw, `"words"`) && !strings.Contains(raw, `"excludes"`) {
+			continue
+		}
+		var rule tagging.Rule
+		_ = json.Unmarshal([]byte(raw), &rule)
+		cleaned := cleanStoredTagRule(rule)
+		rulesJSON, _ := json.Marshal(cleaned)
+		updates = append(updates, update{id: id, rules: string(rulesJSON)})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UnixMilli()
+	for _, item := range updates {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE tags SET match_rules = ?, updated_at = ? WHERE id = ?`,
+			item.rules, now, item.id); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return c.bumpTagRulesVersion(ctx)
 }
 
 // normalizeStoredTagSources 把历史标签来源收敛为三类。视频与标签的关联来源
@@ -938,20 +995,109 @@ UPDATE videos
 	return err
 }
 
-// seedBuiltinTagPack 写入内置标签包。
-// 已存在的标签只在 match_rules 为空时回填默认规则，不覆盖管理员的修改。
+// initializeBuiltinTagPackOnce runs the one-time legacy tag-pool reset:
+// keep administrator-created tags, drop non-user tags, then add the current
+// builtin pack. After the marker is written, deleted builtin tags are treated
+// as deliberate user edits and are not restored by startup or nightly work.
+func (c *Catalog) initializeBuiltinTagPackOnce(ctx context.Context) error {
+	marker, err := c.GetSetting(ctx, settingBuiltinTagPackInit, "")
+	if err != nil {
+		return err
+	}
+	if parseSettingBool(marker, false) {
+		return nil
+	}
+	if err := c.resetNonUserTagsForBuiltinInit(ctx); err != nil {
+		return err
+	}
+	if err := c.seedBuiltinTagPack(ctx); err != nil {
+		return err
+	}
+	return c.SetSetting(ctx, settingBuiltinTagPackInit, "1")
+}
+
+func (c *Catalog) resetNonUserTagsForBuiltinInit(ctx context.Context) error {
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	builtinPlaceholders := placeholders(len(fixedtags.Labels))
+	resetFilterWithAlias := `lower(trim(COALESCE(t.source, ''))) != 'user'`
+	resetFilter := `lower(trim(COALESCE(source, ''))) != 'user'`
+	args := make([]any, 0, len(fixedtags.Labels))
+	if builtinPlaceholders != "" {
+		resetFilterWithAlias += ` OR t.label COLLATE NOCASE IN (` + builtinPlaceholders + `)`
+		resetFilter += ` OR label COLLATE NOCASE IN (` + builtinPlaceholders + `)`
+		for _, label := range fixedtags.Labels {
+			args = append(args, label)
+		}
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+SELECT DISTINCT vt.video_id
+  FROM video_tags vt
+  JOIN tags t ON t.id = vt.tag_id
+ WHERE `+resetFilterWithAlias, args...)
+	if err != nil {
+		return err
+	}
+	var videoIDs []string
+	for rows.Next() {
+		var videoID string
+		if err := rows.Scan(&videoID); err != nil {
+			rows.Close()
+			return err
+		}
+		videoIDs = append(videoIDs, videoID)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM video_tags
+ WHERE tag_id IN (
+       SELECT id
+         FROM tags
+        WHERE `+resetFilter+`
+ )`, args...); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM tags
+ WHERE `+resetFilter, args...); err != nil {
+		return err
+	}
+	for _, videoID := range uniqueStrings(videoIDs) {
+		manual := hasManualTagsTx(ctx, tx, videoID)
+		if err := syncVideoTagsJSONTx(ctx, tx, videoID, manual); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func placeholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.TrimRight(strings.Repeat("?,", n), ",")
+}
+
+// seedBuiltinTagPack writes the current builtin tag pack. Existing user tags
+// with the same label are kept as user tags; existing non-empty rules are not
+// overwritten.
 func (c *Catalog) seedBuiltinTagPack(ctx context.Context) error {
 	for _, t := range fixedtags.All() {
 		isAVTag := strings.EqualFold(t.Label, avTagLabel)
 		rule := t.Rule
 		if isAVTag {
-			disabled, err := c.avCodeMatchingDisabled(ctx)
-			if err != nil {
-				return err
-			}
-			if disabled {
-				continue
-			}
 			rule = avTagRule
 		}
 		if _, err := c.ensureTagWithRules(ctx, t.Label, t.Aliases, rule, t.Source); err != nil {
@@ -1284,16 +1430,16 @@ func (c *Catalog) CreateTagAndClassify(ctx context.Context, label string, aliase
 	return c.classifyTag(ctx, tag)
 }
 
-// UpdateTag 更新管理后台"编辑标签"内容。普通标签保存展示别名；
-// AV 标签把输入列表保存为完整的车牌前缀规则。
-func (c *Catalog) UpdateTag(ctx context.Context, tagID int64, aliases []string) (Tag, error) {
+// UpdateTag 更新管理后台"编辑标签"内容。普通标签保存完整匹配规则；
+// AV 标签只保存车牌前缀规则。
+func (c *Catalog) UpdateTag(ctx context.Context, tagID int64, rule tagging.Rule) (Tag, error) {
 	tag, err := c.getTagByID(ctx, tagID)
 	if err != nil {
 		return Tag{}, err
 	}
 	if strings.EqualFold(tag.Label, avTagLabel) {
-		prefixes := tagging.CleanAVCodePrefixes(aliases)
-		rule := avRuleFromPrefixes(prefixes)
+		prefixes := tagging.CleanAVCodePrefixes(rule.AVCodePrefixes)
+		rule = avRuleFromPrefixes(prefixes)
 		aliasesJSON, _ := json.Marshal([]string{})
 		rulesJSON, _ := json.Marshal(rule)
 		if _, err := c.db.ExecContext(ctx,
@@ -1309,11 +1455,12 @@ func (c *Catalog) UpdateTag(ctx context.Context, tagID int64, aliases []string) 
 		}
 		return c.getTagByID(ctx, tagID)
 	}
-	aliases = cleanAliases(aliases, tag.Label)
-	aliasesJSON, _ := json.Marshal(aliases)
+	rule = cleanTagRule(rule)
+	aliasesJSON, _ := json.Marshal([]string{})
+	rulesJSON, _ := json.Marshal(rule)
 	if _, err := c.db.ExecContext(ctx,
-		`UPDATE tags SET aliases = ?, updated_at = ? WHERE id = ?`,
-		string(aliasesJSON), time.Now().UnixMilli(), tagID); err != nil {
+		`UPDATE tags SET aliases = ?, match_rules = ?, updated_at = ? WHERE id = ?`,
+		string(aliasesJSON), string(rulesJSON), time.Now().UnixMilli(), tagID); err != nil {
 		return Tag{}, err
 	}
 	if err := c.bumpTagRulesVersion(ctx); err != nil {
@@ -1726,9 +1873,7 @@ ORDER BY cnt DESC, t.label ASC`)
 		}
 		_ = json.Unmarshal([]byte(aliasesJSON), &tag.Aliases)
 		_ = json.Unmarshal([]byte(rulesJSON), &tag.MatchRules)
-		if strings.EqualFold(tag.Label, avTagLabel) {
-			tag.MatchRules = effectiveRule(tag.Label, tag.Aliases, tag.MatchRules)
-		}
+		tag.MatchRules = effectiveRule(tag.Label, tag.Aliases, tag.MatchRules)
 		tag.CrawlerOwned = crawlerOwned != 0
 		out = append(out, tag)
 	}
@@ -1876,9 +2021,9 @@ func (c *Catalog) buildMatcher(ctx context.Context) (*tagging.Matcher, error) {
 	return tagging.NewMatcher(tagRules), nil
 }
 
-// effectiveRule 计算标签的生效规则：无显式规则时按 label+aliases 兜底；
-// 有显式规则时通常确保 label 自身也参与匹配。AV 标签例外：它只按番号规则识别，
-// 避免 "AV/JAV/番号" 这类普通描述误触发。
+// effectiveRule 计算标签的生效规则：无显式规则时按 label+legacy aliases 兜底；
+// 有显式规则时按规则本身执行。AV 标签例外：它只按番号规则识别，避免
+// "AV/JAV/番号" 这类普通描述误触发。
 func effectiveRule(label string, aliases []string, rule tagging.Rule) tagging.Rule {
 	if strings.EqualFold(label, avTagLabel) {
 		prefixes := append([]string{}, rule.AVCodePrefixes...)
@@ -1891,21 +2036,6 @@ func effectiveRule(label string, aliases []string, rule tagging.Rule) tagging.Ru
 	}
 	if rule.IsEmpty() {
 		return tagging.RuleFromAliases(label, aliases)
-	}
-	labelRule := tagging.RuleFromAliases(label, nil)
-	seen := map[string]struct{}{}
-	for _, term := range append(append([]string{}, rule.Keywords...), rule.Words...) {
-		seen[strings.ToLower(strings.TrimSpace(term))] = struct{}{}
-	}
-	for _, kw := range labelRule.Keywords {
-		if _, ok := seen[strings.ToLower(kw)]; !ok {
-			rule.Keywords = append(rule.Keywords, kw)
-		}
-	}
-	for _, w := range labelRule.Words {
-		if _, ok := seen[strings.ToLower(w)]; !ok {
-			rule.Words = append(rule.Words, w)
-		}
 	}
 	return rule
 }
@@ -3085,6 +3215,38 @@ func cleanLabels(labels []string) []string {
 
 func cleanTagLabel(label string) string {
 	return strings.TrimSpace(label)
+}
+
+func cleanTagRule(rule tagging.Rule) tagging.Rule {
+	return tagging.Rule{
+		Keywords: cleanRuleTerms(rule.Keywords),
+	}
+}
+
+func cleanStoredTagRule(rule tagging.Rule) tagging.Rule {
+	return tagging.Rule{
+		Keywords:       cleanRuleTerms(rule.Keywords),
+		MatchAVCode:    rule.MatchAVCode,
+		AVCodePrefixes: tagging.CleanAVCodePrefixes(rule.AVCodePrefixes),
+	}
+}
+
+func cleanRuleTerms(terms []string) []string {
+	out := make([]string, 0, len(terms))
+	seen := map[string]struct{}{}
+	for _, term := range terms {
+		term = strings.TrimSpace(term)
+		if term == "" {
+			continue
+		}
+		key := strings.ToLower(term)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, term)
+	}
+	return out
 }
 
 // normalizeTagSource 只用于 tags.source。video_tags.source 是标签挂载来源，
