@@ -7,6 +7,7 @@ import { TagCloud } from "@/components/TagCloud";
 import { SortToolbar, type ViewMode } from "@/components/SortToolbar";
 import { VideoGrid } from "@/components/VideoGrid";
 import { Pagination } from "@/components/Pagination";
+import { AdminEmptyVisual } from "@/admin/AdminEmptyVisual";
 import { fetchListing } from "@/data/videos";
 import type { SortKey, VideoItem } from "@/types";
 
@@ -44,6 +45,7 @@ export default function ListingPage() {
   const [items, setItems] = useState<VideoItem[]>([]);
   const [total, setTotal] = useState(0);
   const isFetching = initialLoading || refreshing;
+  const hasActiveFilter = keyword.trim().length > 0 || tag.trim().length > 0;
 
   useEffect(() => {
     if (activeListKeyRef.current === listKey) return;
@@ -148,13 +150,17 @@ export default function ListingPage() {
             setView(nextView);
           }}
         />
-        <VideoGrid
-          videos={items}
-          loading={initialLoading}
-          compact={view === "compact"}
-          skeletonCount={12}
-          emptyText="没有找到匹配的视频"
-        />
+        {initialLoading ? (
+          <VideoGrid videos={items} loading compact={view === "compact"} skeletonCount={12} />
+        ) : items.length === 0 ? (
+          <AdminEmptyVisual
+            variant={hasActiveFilter ? "no-results" : "empty"}
+            text={hasActiveFilter ? "未查询到" : "当前库中没有视频"}
+            className="admin-empty-state admin-empty-state--plain listing-empty-state"
+          />
+        ) : (
+          <VideoGrid videos={items} compact={view === "compact"} skeletonCount={12} />
+        )}
         <Pagination
           page={page}
           pageSize={tag ? PAGE_SIZE_TAG : PAGE_SIZE_DEFAULT}

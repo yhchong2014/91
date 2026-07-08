@@ -39,7 +39,7 @@ function ruleBody(css: string, selector: string): string {
 }
 
 test("home page refresh button shares back-to-top slot until back-to-top is visible", () => {
-  assert.match(homePageSource, /import \{ Film, RefreshCw \} from "lucide-react"/);
+  assert.match(homePageSource, /import \{ RefreshCw \} from "lucide-react"/);
   assert.match(homePageSource, /const LATEST_POOL_SIZE = 96;/);
   assert.match(homePageSource, /const HOME_LATEST_CURSOR_KEY = "home\.latest\.cursor";/);
   assert.match(homePageSource, /function nextLatestBatch/);
@@ -50,6 +50,7 @@ test("home page refresh button shares back-to-top slot until back-to-top is visi
   assert.match(homePageSource, /const refreshHome = useCallback\(async \(\) =>/);
   assert.match(homePageSource, /fetchHomeVideos\(excludeIds\)/);
   assert.match(homePageSource, /fetchListing\(1,\s*LATEST_POOL_SIZE,\s*\{ sort: "latest", includeTotal: false \}\)/);
+  assert.match(homePageSource, /const HOME_SEARCH_PAGE_SIZE = 24;/);
   assert.match(homePageSource, /setLatestVideos\(latestBatch\)/);
   assert.match(homePageSource, /setLatestVideos\(cachedLatestBatch \?\? cacheNextLatestBatch\(cachedLatestPool,\s*DESKTOP_COUNT\)\)/);
   assert.match(homePageSource, /className=\{`home-refresh \$\{refreshing \? "is-refreshing" : ""\}`\}/);
@@ -120,32 +121,47 @@ test("home page reserves tag cloud space while tags load and uses one empty libr
   assert.match(searchPanelSource, /placeholder="搜索视频标题或作者"/);
   assert.doesNotMatch(searchPanelSource, /搜索视频标题或作者\.\.\./);
   assert.match(searchPanelSource, /const SEARCH_DEBOUNCE_MS = 500;/);
-  assert.match(searchPanelSource, /window\.setTimeout\(\(\) => \{\s*navigateToSearch\(keyword\);/);
+  assert.match(searchPanelSource, /window\.setTimeout\(\(\) => \{\s*commitSearch\(keyword\);/);
+  assert.match(searchPanelSource, /onSearch\(q\);/);
   assert.doesNotMatch(searchPanelSource, /onChange=\{\(e\) => navigate/);
   assert.match(searchForm, /padding\s*:\s*4px/);
   assert.match(searchInput, /height\s*:\s*36px/);
   assert.match(searchSubmit, /height\s*:\s*36px/);
 
   assert.match(homePageSource, /const homeLoading = rankingLoading \|\| latestLoading/);
+  assert.match(homePageSource, /import \{ AdminEmptyVisual \} from "@\/admin\/AdminEmptyVisual"/);
+  assert.match(homePageSource, /const \[searchQuery, setSearchQuery\] = useState\(""\)/);
+  assert.match(homePageSource, /const \[searchSort, setSearchSort\] = useState<SortKey>\("latest"\)/);
+  assert.match(homePageSource, /const \[searchView, setSearchView\] = useState<ViewMode>\("grid"\)/);
+  assert.match(homePageSource, /<SearchPanel value=\{searchQuery\} onSearch=\{handleSearch\} \/>/);
+  assert.match(homePageSource, /fetchListing\(searchPage,\s*HOME_SEARCH_PAGE_SIZE,\s*\{[\s\S]*?q: activeSearchQuery,[\s\S]*?sort: searchSort/);
+  assert.doesNotMatch(homePageSource, /搜索结果：/);
+  assert.match(homePageSource, /<SortToolbar[\s\S]*?sort=\{searchSort\}[\s\S]*?view=\{searchView\}/);
+  assert.match(homePageSource, /setSearchSort\(nextSort\);[\s\S]*?setSearchPage\(1\);/);
+  assert.match(homePageSource, /onViewChange=\{setSearchView\}/);
+  assert.match(homePageSource, /compact=\{searchView === "compact"\}/);
+  assert.match(homePageSource, /variant="no-results"[\s\S]*?text="未查询到"[\s\S]*?className="admin-empty-state admin-empty-state--plain home-empty-state"/);
+  assert.match(homePageSource, /<Pagination[\s\S]*?page=\{searchPage\}[\s\S]*?pageSize=\{HOME_SEARCH_PAGE_SIZE\}/);
   assert.match(homePageSource, /const hasAnyVideos = ranking\.length > 0 \|\| latest\.length > 0/);
   assert.match(homePageSource, /const showEmptyHome = !homeLoading && !hasAnyVideos/);
-  assert.match(homePageSource, /\{hasAnyVideos \? \(\s*<TagCloud \/>\s*\) : \(\s*<div className="tag-cloud-container is-reserved" aria-hidden="true" \/>\s*\)\}/);
+  assert.match(homePageSource, /\{!hasActiveSearch && \(\s*hasAnyVideos \? \(\s*<TagCloud \/>\s*\) : \(\s*<div className="tag-cloud-container is-reserved" aria-hidden="true" \/>\s*\)\s*\)\}/);
   assert.match(homePageSource, /<SectionHeader title="随机推荐" \/>/);
   assert.match(homePageSource, /<SectionHeader title="最新视频" \/>/);
   assert.doesNotMatch(homePageSource, /随机展示/);
   assert.doesNotMatch(homePageSource, /共 \$\{latest\.length\} 个/);
   assert.match(homePageSource, /className="container page-section home-discovery-section"/);
   assert.match(homePageSource, /className="container page-section home-primary-section"/);
-  assert.match(homePageSource, /className="home-empty"/);
-  assert.match(homePageSource, /当前没有可播放视频/);
+  assert.match(homePageSource, /variant="empty"[\s\S]*?text="当前库中没有视频"[\s\S]*?className="admin-empty-state admin-empty-state--plain home-empty-state"/);
+  assert.doesNotMatch(homePageSource, /className="home-empty"/);
+  assert.doesNotMatch(homePageSource, /当前没有可播放视频/);
 
   const discoverySection = ruleBody(layoutCss, ".home-discovery-section");
   const primaryHeader = ruleBody(layoutCss, ".home-primary-section .section-header");
   assert.match(discoverySection, /padding-bottom\s*:\s*var\(--space-2\)/);
   assert.match(primaryHeader, /margin-top\s*:\s*var\(--space-2\)/);
 
-  const empty = ruleBody(layoutCss, ".home-empty");
-  assert.match(empty, /min-height\s*:\s*240px/);
-  assert.match(empty, /border\s*:\s*1px dashed var\(--border-default\)/);
-  assert.match(empty, /border-radius\s*:\s*8px/);
+  assert.doesNotMatch(layoutCss, /\.home-empty\s*\{/);
+  const homeEmptyState = ruleBody(layoutCss, ".admin-empty-state.home-empty-state");
+  assert.match(homeEmptyState, /min-height\s*:\s*clamp\(360px,\s*58vh,\s*620px\)/);
+  assert.match(homeEmptyState, /padding\s*:\s*72px 16px 24px/);
 });

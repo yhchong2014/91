@@ -41,6 +41,12 @@ test("list page sort toolbar only exposes active sort options", () => {
 test("listing page uses compact spacing after the tag cloud", () => {
   assert.match(listingPageSource, /className="container page-section listing-discovery-section"/);
   assert.match(listingPageSource, /className="container page-section listing-primary-section"/);
+  assert.match(listingPageSource, /import \{ AdminEmptyVisual \} from "@\/admin\/AdminEmptyVisual"/);
+  assert.match(listingPageSource, /const hasActiveFilter = keyword\.trim\(\)\.length > 0 \|\| tag\.trim\(\)\.length > 0;/);
+  assert.match(listingPageSource, /variant=\{hasActiveFilter \? "no-results" : "empty"\}/);
+  assert.match(listingPageSource, /text=\{hasActiveFilter \? "未查询到" : "当前库中没有视频"\}/);
+  assert.match(listingPageSource, /className="admin-empty-state admin-empty-state--plain listing-empty-state"/);
+  assert.doesNotMatch(listingPageSource, /没有找到匹配的视频/);
   assert.doesNotMatch(listingPageSource, /SectionHeader/);
   assert.doesNotMatch(listingPageSource, /全部视频/);
   assert.doesNotMatch(listingPageSource, /搜索结果：/);
@@ -49,6 +55,9 @@ test("listing page uses compact spacing after the tag cloud", () => {
 
   const discoverySection = ruleBody(layoutCss, ".listing-discovery-section");
   assert.match(discoverySection, /padding-bottom\s*:\s*var\(--space-2\)/);
+  const listingEmptyState = ruleBody(layoutCss, ".admin-empty-state.listing-empty-state");
+  assert.match(listingEmptyState, /min-height\s*:\s*clamp\(360px,\s*58vh,\s*620px\)/);
+  assert.match(listingEmptyState, /padding\s*:\s*72px 16px 24px/);
 });
 
 test("sort toolbar has no outer frame around its controls", () => {

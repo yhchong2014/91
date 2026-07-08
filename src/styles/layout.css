@@ -45,26 +45,16 @@
   margin-top: var(--space-2);
 }
 
-.home-empty {
-  min-height: 240px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  color: var(--text-muted);
-  border: 1px dashed var(--border-default);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+.admin-empty-state.home-empty-state {
+  box-sizing: border-box;
+  min-height: clamp(360px, 58vh, 620px);
+  padding: 72px 16px 24px;
 }
 
-.home-empty svg {
-  flex: 0 0 auto;
-  color: var(--text-faint);
-}
-
-.home-empty span {
-  font-size: var(--font-md);
-  color: var(--text-muted);
+.admin-empty-state.listing-empty-state {
+  box-sizing: border-box;
+  min-height: clamp(360px, 58vh, 620px);
+  padding: 72px 16px 24px;
 }
 
 /* =========================================================

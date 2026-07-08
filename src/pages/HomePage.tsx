@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { Film, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { PromoStrip } from "@/components/PromoStrip";
 import { SearchPanel } from "@/components/SearchPanel";
 import { TagCloud } from "@/components/TagCloud";
 import { SectionHeader } from "@/components/SectionHeader";
+import { SortToolbar, type ViewMode } from "@/components/SortToolbar";
 import { VideoGrid } from "@/components/VideoGrid";
+import { Pagination } from "@/components/Pagination";
+import { AdminEmptyVisual } from "@/admin/AdminEmptyVisual";
 import { fetchHomeVideos, fetchListing } from "@/data/videos";
-import type { VideoItem } from "@/types";
+import type { SortKey, VideoItem } from "@/types";
 
 const DESKTOP_COUNT = 12;
 const MOBILE_COUNT = 8;
+const HOME_SEARCH_PAGE_SIZE = 24;
 const LATEST_POOL_SIZE = 96;
 const HOME_RECENT_KEY = "home.random.recentVideoIds";
 const HOME_RECENT_LIMIT = 72;
@@ -108,7 +112,15 @@ export default function HomePage() {
   const [rankingLoading, setRankingLoading] = useState(cachedRanking === null);
   const [latestLoading, setLatestLoading] = useState(cachedLatestBatch === null);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchItems, setSearchItems] = useState<VideoItem[]>([]);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchSort, setSearchSort] = useState<SortKey>("latest");
+  const [searchView, setSearchView] = useState<ViewMode>("grid");
   const isMobile = useIsMobile();
+  const activeSearchQuery = searchQuery.trim();
 
   const refreshHome = useCallback(async () => {
     setRefreshing(true);
@@ -132,9 +144,16 @@ export default function HomePage() {
     setRefreshing(false);
   }, []);
 
-  useEffect(() => {
-    document.title = "首页 · 91";
+  const handleSearch = useCallback((keyword: string) => {
+    setSearchQuery(keyword);
+    setSearchPage(1);
+  }, []);
 
+  useEffect(() => {
+    document.title = activeSearchQuery ? `搜索 "${activeSearchQuery}" · 91` : "首页 · 91";
+  }, [activeSearchQuery]);
+
+  useEffect(() => {
     let active = true;
 
     if (cachedRanking === null) {
@@ -171,10 +190,39 @@ export default function HomePage() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    if (!activeSearchQuery) {
+      setSearchItems([]);
+      setSearchTotal(0);
+      setSearchLoading(false);
+      return;
+    }
+
+    let active = true;
+    setSearchLoading(true);
+    fetchListing(searchPage, HOME_SEARCH_PAGE_SIZE, {
+      q: activeSearchQuery,
+      sort: searchSort,
+    })
+      .then((result) => {
+        if (!active) return;
+        setSearchItems(result.items ?? []);
+        setSearchTotal(result.total ?? 0);
+      })
+      .finally(() => {
+        if (active) setSearchLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeSearchQuery, searchPage, searchSort]);
+
   const displayCount = isMobile ? MOBILE_COUNT : DESKTOP_COUNT;
   const ranking = rankingVideos.slice(0, displayCount);
   const latest = latestVideos.slice(0, displayCount);
   const homeLoading = rankingLoading || latestLoading;
+  const hasActiveSearch = activeSearchQuery.length > 0;
+  const searchTotalPages = Math.max(1, Math.ceil(searchTotal / HOME_SEARCH_PAGE_SIZE));
   const hasAnyVideos = ranking.length > 0 || latest.length > 0;
   const showEmptyHome = !homeLoading && !hasAnyVideos;
 
@@ -182,20 +230,58 @@ export default function HomePage() {
     <AppShell mobileAutoHideNav>
       <div className="container page-section home-discovery-section">
         <PromoStrip />
-        <SearchPanel />
-        {hasAnyVideos ? (
-          <TagCloud />
-        ) : (
-          <div className="tag-cloud-container is-reserved" aria-hidden="true" />
+        <SearchPanel value={searchQuery} onSearch={handleSearch} />
+        {!hasActiveSearch && (
+          hasAnyVideos ? (
+            <TagCloud />
+          ) : (
+            <div className="tag-cloud-container is-reserved" aria-hidden="true" />
+          )
         )}
       </div>
 
-      {showEmptyHome ? (
+      {hasActiveSearch ? (
         <div className="container page-section home-primary-section">
-          <div className="home-empty" role="status">
-            <Film size={30} aria-hidden="true" />
-            <span>当前没有可播放视频</span>
-          </div>
+          <SortToolbar
+            sort={searchSort}
+            view={searchView}
+            onSortChange={(nextSort) => {
+              setSearchSort(nextSort);
+              setSearchPage(1);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            onViewChange={setSearchView}
+          />
+          {searchLoading ? (
+            <VideoGrid videos={searchItems} loading compact={searchView === "compact"} skeletonCount={12} />
+          ) : searchItems.length === 0 ? (
+            <AdminEmptyVisual
+              variant="no-results"
+              text="未查询到"
+              className="admin-empty-state admin-empty-state--plain home-empty-state"
+            />
+          ) : (
+            <VideoGrid videos={searchItems} compact={searchView === "compact"} skeletonCount={12} />
+          )}
+          {!searchLoading && searchTotalPages > 1 && (
+            <Pagination
+              page={searchPage}
+              pageSize={HOME_SEARCH_PAGE_SIZE}
+              total={searchTotal}
+              onChange={(p) => {
+                setSearchPage(p);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
+          )}
+        </div>
+      ) : showEmptyHome ? (
+        <div className="container page-section home-primary-section">
+          <AdminEmptyVisual
+            variant="empty"
+            text="当前库中没有视频"
+            className="admin-empty-state admin-empty-state--plain home-empty-state"
+          />
         </div>
       ) : (
         <>
@@ -216,16 +302,18 @@ export default function HomePage() {
         </>
       )}
 
-      <button
-        type="button"
-        className={`home-refresh ${refreshing ? "is-refreshing" : ""}`}
-        onClick={refreshHome}
-        disabled={refreshing}
-        aria-label="刷新首页"
-        title="刷新首页"
-      >
-        <RefreshCw size={18} />
-      </button>
+      {!hasActiveSearch && (
+        <button
+          type="button"
+          className={`home-refresh ${refreshing ? "is-refreshing" : ""}`}
+          onClick={refreshHome}
+          disabled={refreshing}
+          aria-label="刷新首页"
+          title="刷新首页"
+        >
+          <RefreshCw size={18} />
+        </button>
+      )}
     </AppShell>
   );
 }
