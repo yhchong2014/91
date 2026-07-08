@@ -13,6 +13,7 @@ import { useToast } from "./ToastContext";
 import { Modal } from "./Modal";
 import { ConfirmModal } from "./ConfirmModal";
 import { formatBytes } from "./storageFormat";
+import { AdminEmptyVisual } from "./AdminEmptyVisual";
 
 const DESKTOP_VIDEOS_PAGE_SIZE = 50;
 const MOBILE_VIDEOS_PAGE_SIZE = 20;
@@ -405,9 +406,11 @@ function CurrentVideosTab({
       {loading ? null : loadError ? (
         <ErrorState message={loadError} onRetry={refresh} />
       ) : listItems.length === 0 ? (
-        <div className="admin-empty-state admin-empty-state--plain">
-          {hasActiveSearch ? "未查询到" : "当前库中没有视频"}
-        </div>
+        <AdminEmptyVisual
+          variant={hasActiveSearch ? "no-results" : "empty"}
+          text={hasActiveSearch ? "未查询到" : "当前库中没有视频"}
+          className="admin-empty-state admin-empty-state--plain"
+        />
       ) : (
         <>
           <table className={`admin-table is-selectable admin-videos-table${selectMode ? " is-row-select-mode" : ""}`}>
@@ -836,9 +839,11 @@ function BlacklistTab({
       {loading ? null : loadError ? (
         <ErrorState message={loadError} onRetry={refresh} />
       ) : list.length === 0 ? (
-        <div className="admin-empty-state admin-empty-state--plain">
-          {hasActiveSearch ? "未查询到" : "暂无拉黑视频"}
-        </div>
+        <AdminEmptyVisual
+          variant={hasActiveSearch ? "no-results" : "empty"}
+          text={hasActiveSearch ? "未查询到" : "暂无拉黑视频"}
+          className="admin-empty-state admin-empty-state--plain"
+        />
       ) : (
         <>
           <table className={`admin-table is-selectable admin-blacklist-table${selectMode ? " is-row-select-mode" : ""}`}>

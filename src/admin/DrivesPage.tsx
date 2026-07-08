@@ -34,6 +34,7 @@ import {
 import { DriveForm } from "./drive/DriveForm";
 import { DeleteDriveModal } from "./drive/DeleteDriveModal";
 import { SkipDirsPanel } from "./drive/SkipDirsPanel";
+import { AdminEmptyVisual } from "./AdminEmptyVisual";
 
 const DRIVE_BUSY_MESSAGE = "当前存储有正在进行的任务，请稍后重试";
 const NIGHTLY_BUSY_MESSAGE = "当前有全量扫描任务正在进行，请稍后重试";
@@ -831,7 +832,11 @@ export function DrivesPage() {
           })}
         </div>
       ) : (
-        <div className="admin-drive-empty-state">请先添加网盘</div>
+        <AdminEmptyVisual
+          variant="empty"
+          text="请先添加网盘"
+          className="admin-drive-empty-state"
+        />
       )}
 
       <Modal

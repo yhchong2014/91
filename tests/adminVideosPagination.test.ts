@@ -3,7 +3,15 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const videosPageSource = readFileSync(new URL("../src/admin/VideosPage.tsx", import.meta.url), "utf8");
+const emptyVisualSource = readFileSync(new URL("../src/admin/AdminEmptyVisual.tsx", import.meta.url), "utf8");
 const adminCss = readFileSync(new URL("../src/styles/admin.css", import.meta.url), "utf8");
+
+test("admin empty visual places the requested image above its text", () => {
+  assert.match(emptyVisualSource, /import emptyImage from "@\/assets\/admin\/empty\.webp"/);
+  assert.match(emptyVisualSource, /import noResultsImage from "@\/assets\/admin\/no-results\.webp"/);
+  assert.match(emptyVisualSource, /variant === "no-results" \? noResultsImage : emptyImage/);
+  assert.match(emptyVisualSource, /admin-empty-visual__media[\s\S]*?<img[\s\S]*?admin-empty-visual__text/);
+});
 
 test("normal videos use ten items while blacklist remains responsive", () => {
   assert.match(videosPageSource, /const NORMAL_VIDEOS_PAGE_SIZE = 10;/);
@@ -49,7 +57,7 @@ test("video pagination keeps its position when the page has fewer rows", () => {
   );
 });
 
-test("empty video tabs use plain text and distinguish search misses", () => {
+test("empty video tabs use the correct visual and distinguish search misses", () => {
   const currentSource = videosPageSource.slice(
     videosPageSource.indexOf("function CurrentVideosTab"),
     videosPageSource.indexOf("// ---------- 拉黑视频 ----------")
@@ -63,6 +71,8 @@ test("empty video tabs use plain text and distinguish search misses", () => {
   assert.match(blacklistSource, /\{hasBlacklistActions && \(\s*<div className="admin-videos-filter__actions admin-blacklist-source-delete">[\s\S]*?删除全部[\s\S]*?批量选择/);
   assert.match(currentSource, /admin-empty-state admin-empty-state--plain/);
   assert.match(blacklistSource, /admin-empty-state admin-empty-state--plain/);
+  assert.match(currentSource, /variant=\{hasActiveSearch \? "no-results" : "empty"\}/);
+  assert.match(blacklistSource, /variant=\{hasActiveSearch \? "no-results" : "empty"\}/);
   assert.match(currentSource, /hasActiveSearch \? "未查询到" : "当前库中没有视频"/);
   assert.match(blacklistSource, /hasActiveSearch \? "未查询到" : "暂无拉黑视频"/);
   assert.match(blacklistSource, /暂无拉黑视频/);

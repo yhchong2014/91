@@ -23,6 +23,7 @@ import { useToast } from "./ToastContext";
 import { generationStateClass, generationStateLabel } from "./drive/constants";
 import { CrawlerUploadTargetField } from "./drive/CrawlerUploadTargetField";
 import { SpiderIcon } from "./icons/SpiderIcon";
+import { AdminEmptyVisual } from "./AdminEmptyVisual";
 
 const BUSY_STATES = new Set(["scanning", "generating", "uploading", "queued"]);
 const POLL_INTERVAL_MS = 5000;
@@ -203,7 +204,7 @@ export function CrawlersPage() {
   const partialCrawlerTeasersEnabled = !allCrawlerTeasersEnabled && list.some((item) => item.teaserEnabled);
 
   return (
-    <section className="admin-page">
+    <section className="admin-page admin-crawlers-page">
       <header className="admin-page__header">
         <div className="admin-crawler-global-teaser">
           <span>预览视频</span>
@@ -243,10 +244,11 @@ export function CrawlersPage() {
               <span>加载中...</span>
             </div>
           ) : list.length === 0 ? (
-            <div className="admin-crawler-empty">
-              <SpiderIcon size={28} />
-              <strong>暂无爬虫</strong>
-            </div>
+            <AdminEmptyVisual
+              variant="empty"
+              text="暂无爬虫"
+              className="admin-crawler-empty"
+            />
           ) : (
             <div className="admin-crawler-table">
               {list.map((crawler) => (

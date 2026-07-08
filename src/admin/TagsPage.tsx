@@ -4,6 +4,7 @@ import * as api from "./api";
 import { useToast } from "./ToastContext";
 import { ConfirmModal } from "./ConfirmModal";
 import { Modal } from "./Modal";
+import { AdminEmptyVisual } from "./AdminEmptyVisual";
 
 const DESKTOP_TAGS_PAGE_SIZE = 25;
 const MOBILE_TAGS_PAGE_SIZE = 8;
@@ -188,6 +189,8 @@ export function TagsPage() {
       })
       .map(({ tag }) => tag);
   }, [tags, searchQuery, filterSource]);
+  const hasActiveSearch = searchQuery.trim().length > 0;
+  const searchEmpty = hasActiveSearch && !loading && !loadError && filteredTags.length === 0;
 
   const totalPages = Math.max(1, Math.ceil(filteredTags.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -229,7 +232,7 @@ export function TagsPage() {
   }
 
   return (
-    <section className={`admin-tags-page${selectMode ? " has-bulk-actions" : ""}`}>
+    <section className={`admin-tags-page${selectMode ? " has-bulk-actions" : ""}${searchEmpty ? " is-search-empty" : ""}`}>
       <div className="admin-tags-layout">
         <div className="admin-tags-main">
           <div className="admin-tags-toolbar">
@@ -289,26 +292,33 @@ export function TagsPage() {
             </div>
           </div>
 
-          <div className="admin-tags-board">
-            <div className="admin-tags-cards">
-              {loading ? (
-                <div className="admin-loading-state">
-                  <RefreshCw size={20} className="admin-spin" />
-                  <span>加载中...</span>
-                </div>
-              ) : loadError ? (
-                <div className="admin-error-state">
-                  <strong>标签加载失败</strong>
-                  <span>{loadError}</span>
-                  <button type="button" className="admin-btn" onClick={refresh}>
-                    <RefreshCw size={13} /> 重试
-                  </button>
-                </div>
-              ) : filteredTags.length === 0 ? (
-                <div className="admin-card admin-empty">
-                  没有找到匹配的标签。
-                </div>
-              ) : (
+          {searchEmpty ? (
+            <AdminEmptyVisual
+              variant="no-results"
+              text="未查询到"
+              className="admin-empty-state admin-empty-state--plain admin-tags-empty-search"
+            />
+          ) : (
+            <div className="admin-tags-board">
+              <div className="admin-tags-cards">
+                {loading ? (
+                  <div className="admin-loading-state">
+                    <RefreshCw size={20} className="admin-spin" />
+                    <span>加载中...</span>
+                  </div>
+                ) : loadError ? (
+                  <div className="admin-error-state">
+                    <strong>标签加载失败</strong>
+                    <span>{loadError}</span>
+                    <button type="button" className="admin-btn" onClick={refresh}>
+                      <RefreshCw size={13} /> 重试
+                    </button>
+                  </div>
+                ) : filteredTags.length === 0 ? (
+                  <div className="admin-card admin-empty">
+                    没有找到匹配的标签。
+                  </div>
+                ) : (
                 <>
                   <div className="admin-tags-grid">
                     {pagedTags.map((tag) => {
@@ -416,9 +426,10 @@ export function TagsPage() {
                     </div>
                   )}
                 </>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
       {selectMode && (

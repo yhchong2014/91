@@ -696,19 +696,36 @@ test("drive list actions use ordinary text buttons in the requested positions", 
   assert.doesNotMatch(adminCss, /\.admin-drive-footer-actions/);
 });
 
-test("empty drive list renders a centered plain-text prompt", () => {
+test("empty drive list renders the shared empty visual and prompt", () => {
   const listViewStart = drivesPageSource.indexOf("// --- List view ---");
   const modalStart = drivesPageSource.indexOf("<Modal", listViewStart);
   assert.ok(listViewStart > -1, "list view branch should be present");
   assert.ok(modalStart > listViewStart, "list view modal should follow list content");
 
   const listViewSource = drivesPageSource.slice(listViewStart, modalStart);
-  assert.match(listViewSource, /className="admin-drive-empty-state">请先添加网盘<\/div>/);
+  assert.match(listViewSource, /<AdminEmptyVisual[\s\S]*?variant="empty"[\s\S]*?text="请先添加网盘"[\s\S]*?className="admin-drive-empty-state"/);
   assert.doesNotMatch(listViewSource, /className="admin-card admin-empty"/);
   assert.match(listViewSource, /list\.length > 0 \? \(/);
   assert.match(
     adminCss,
     /\.admin-drive-empty-state\s*\{[^}]*display\s*:\s*flex;[^}]*flex\s*:\s*1 1 auto;[^}]*align-items\s*:\s*center;[^}]*justify-content\s*:\s*center/s
+  );
+});
+
+test("empty crawler list renders the shared empty visual", () => {
+  assert.match(crawlerPageSource, /<section className="admin-page admin-crawlers-page">/);
+  assert.match(
+    crawlerPageSource,
+    /<AdminEmptyVisual[\s\S]*?variant="empty"[\s\S]*?text="暂无爬虫"[\s\S]*?className="admin-crawler-empty"/
+  );
+  assert.doesNotMatch(crawlerPageSource, /<SpiderIcon size=\{28\} \/>/);
+  assert.match(
+    adminCss,
+    /\.admin-crawlers-page\s*\{[^}]*display\s*:\s*flex;[^}]*flex-direction\s*:\s*column;[^}]*min-height\s*:\s*calc\(100vh - \(var\(--space-7\) \* 2\)\)/s
+  );
+  assert.match(
+    adminCss,
+    /\.admin-crawler-empty\s*\{[^}]*flex\s*:\s*1 1 auto;[^}]*min-height\s*:\s*0;[^}]*justify-content\s*:\s*center/s
   );
 });
 
