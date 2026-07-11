@@ -22,6 +22,7 @@ import (
 	"github.com/video-site/backend/internal/drives/pikpak"
 	"github.com/video-site/backend/internal/drives/quark"
 	"github.com/video-site/backend/internal/drives/scriptcrawler"
+	"github.com/video-site/backend/internal/drives/webdav"
 	"github.com/video-site/backend/internal/drives/wopan"
 	"github.com/video-site/backend/internal/fingerprint"
 	"github.com/video-site/backend/internal/preview"
@@ -219,6 +220,19 @@ func (a *App) attachDriveUnlocked(ctx context.Context, d *catalog.Drive) error {
 				d.Credentials["refresh_token"] = refresh
 				_ = a.cat.UpsertDrive(ctx, d)
 			},
+		})
+	case webdav.Kind:
+		address := strings.TrimSpace(d.Credentials["address"])
+		if address == "" {
+			return fmt.Errorf("webdav drive %s: address is required", d.ID)
+		}
+		drv = webdav.New(webdav.Config{
+			ID:                    d.ID,
+			Address:               address,
+			Username:              strings.TrimSpace(d.Credentials["username"]),
+			Password:              d.Credentials["password"],
+			RootPath:              strings.TrimSpace(d.Credentials["root_path"]),
+			TLSInsecureSkipVerify: parseBoolDefault(strings.TrimSpace(d.Credentials["tls_insecure_skip_verify"]), false),
 		})
 	case localstorage.Kind:
 		drv = localstorage.New(localstorage.Config{
