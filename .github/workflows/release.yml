@@ -1,9 +1,7 @@
-name: Release
+name: Build Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -30,19 +28,34 @@ jobs:
           node-version: "20"
           cache: npm
 
-      - name: Build release packages
-        run: scripts/build-release.sh
+      - name: Build frontend
+        run: |
+          npm ci || npm install --legacy-peer-deps
+          npm run build
 
-      - name: Upload release assets
+      - name: Build backend
+        run: |
+          cd backend
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o server ./cmd/server
+
+      - name: Package tarball
+        run: |
+          mkdir -p video-site-91-linux-amd64
+          cp backend/server video-site-91-linux-amd64/
+          cp backend/config.example.yaml video-site-91-linux-amd64/
+          cp -R dist video-site-91-linux-amd64/dist
+          [ -f install.sh ] && cp install.sh video-site-91-linux-amd64/ || true
+          tar -czf video-site-91-linux-amd64.tar.gz video-site-91-linux-amd64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-site-91-linux-amd64
+          path: video-site-91-linux-amd64.tar.gz
+
+      - name: Create Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
-          git tag -d "$TAG" >/dev/null 2>&1 || true
-          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
-          NOTES="$(git tag -l "$TAG" --format='%(contents)')"
-          if [ -z "$NOTES" ]; then
-            NOTES="Prebuilt Linux release packages."
-          fi
-          gh release delete "$TAG" --yes >/dev/null 2>&1 || true
-          gh release create "$TAG" release/*.tar.gz --title "$TAG" --notes "$NOTES" --verify-tag
+          gh release delete "custom-build" --yes 2>/dev/null || true
+          gh release create "custom-build" video-site-91-linux-amd64.tar.gz --title "Custom Build (WebDAV + MetaTube)" --notes "Pre-built release with WebDAV driver, .strm support, 302 redirect, and MetaTube scraper." --latest
