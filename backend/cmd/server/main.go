@@ -25,6 +25,7 @@ import (
 	"github.com/video-site/backend/internal/catalog"
 	"github.com/video-site/backend/internal/config"
 	"github.com/video-site/backend/internal/crawlerupload"
+	"github.com/video-site/backend/internal/metatube"
 	"github.com/video-site/backend/internal/drives/localstorage"
 	"github.com/video-site/backend/internal/drives/scriptcrawler"
 	"github.com/video-site/backend/internal/fingerprint"
@@ -97,6 +98,15 @@ func main() {
 	// 登录态校验拖慢端口监听。
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Initialize MetaTube client if enabled.
+	if cfg.MetaTube.Enabled && cfg.MetaTube.ServerURL != "" {
+		app.metaTubeClient = metatube.New(metatube.Config{
+			ServerURL: cfg.MetaTube.ServerURL,
+			Token:     cfg.MetaTube.Token,
+		})
+		log.Printf("[metatube] scraper enabled, backend: %s", cfg.MetaTube.ServerURL)
+	}
 
 	app.loadTheme(ctx)
 	if removed, err := app.cleanupOrphanDriveVideos(ctx); err != nil {

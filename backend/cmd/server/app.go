@@ -10,6 +10,7 @@ import (
 	"github.com/video-site/backend/internal/config"
 	"github.com/video-site/backend/internal/drives/scriptcrawler"
 	"github.com/video-site/backend/internal/fingerprint"
+	"github.com/video-site/backend/internal/metatube"
 	"github.com/video-site/backend/internal/nightly"
 	"github.com/video-site/backend/internal/preview"
 	"github.com/video-site/backend/internal/proxy"
@@ -39,6 +40,9 @@ type App struct {
 
 	// crawlerUploader 把脚本爬虫保存在本地的视频上传到每个爬虫配置的目标 drive。
 	crawlerUploader crawlerUploadRunner
+
+	// metaTubeClient is the optional MetaTube scraper client. nil = disabled.
+	metaTubeClient *metatube.Client
 
 	// nightlyRunner 是凌晨流水线调度器：每天 cron_hour 串行跑扫盘 → 脚本爬虫 → 上传。
 	// 也响应 admin 「扫描所有网盘」按钮（TriggerNow）。

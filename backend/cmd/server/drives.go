@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -1143,6 +1144,10 @@ func (a *App) runScanWithTaskContext(ctx context.Context, driveID string) {
 		if fingerprintWorker != nil {
 			fingerprintWorker.Enqueue(v)
 		}
+		// MetaTube: scrape metadata by filename in background.
+		if a.metaTubeClient != nil && v.FileName != "" {
+			go a.scrapeMetaTube(ctx, v.ID, v.FileName)
+		}
 	}
 
 	// 扫描入口固定使用 drive 的 root_id；同时把 admin 配置的 SkipDirIDs
@@ -1236,4 +1241,87 @@ func (a *App) cleanupMissingDriveVideos(ctx context.Context, driveID string, liv
 		removed++
 	}
 	return removed, nil
+}
+
+// scrapeMetaTube queries the MetaTube backend for video metadata (title,
+// actors, genres) based on the filename and updates the catalog entry.
+// Called asynchronously from the scan onNew callback.
+func (a *App) scrapeMetaTube(ctx context.Context, videoID, fileName string) {
+	scrapeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	meta, err := a.metaTubeClient.ScrapeByFilename(scrapeCtx, fileName)
+	if err != nil {
+		log.Printf("[metatube] scrape %q: %v", fileName, err)
+		return
+	}
+	if meta == nil {
+		return // no recognizable code in filename
+	}
+
+	patch := catalog.VideoMetaPatch{}
+	if meta.Title != "" {
+		patch.Title = meta.Title
+		patch.TitleSet = true
+	}
+	// Build author from actors list.
+	if len(meta.Actors) > 0 {
+		names := make([]string, 0, len(meta.Actors))
+		for _, actor := range meta.Actors {
+			if actor.Name != "" {
+				names = append(names, actor.Name)
+			}
+		}
+		if len(names) > 0 {
+			patch.Author = strings.Join(names, ", ")
+			patch.AuthorSet = true
+		}
+	}
+
+	if patch.TitleSet || patch.AuthorSet {
+		if err := a.cat.UpdateVideoMeta(ctx, videoID, patch); err != nil {
+			log.Printf("[metatube] update %q: %v", videoID, err)
+		} else {
+			log.Printf("[metatube] scraped %q → %q", fileName, meta.Title)
+		}
+	}
+
+	// Download cover image from MetaTube and set as thumbnail.
+	if meta.Provider != "" && meta.ID != "" {
+		coverURL := a.metaTubeClient.GetPrimaryImageURL(meta.Provider, meta.ID)
+		coverData, contentType, err := a.metaTubeClient.DownloadImage(scrapeCtx, coverURL)
+		if err == nil && len(coverData) > 0 {
+			thumbPath := a.saveMetaTubeCover(videoID, coverData, contentType)
+			if thumbPath != "" {
+				_ = a.cat.UpdateVideoMeta(ctx, videoID, catalog.VideoMetaPatch{
+					ThumbnailURL:    thumbPath,
+					ThumbnailStatus: "ready",
+				})
+				log.Printf("[metatube] cover saved for %q", fileName)
+			}
+		}
+	}
+}
+
+// saveMetaTubeCover writes MetaTube cover image bytes to the local preview
+// directory and returns the URL path for the thumbnail.
+func (a *App) saveMetaTubeCover(videoID string, data []byte, contentType string) string {
+	ext := ".jpg"
+	if strings.Contains(contentType, "png") {
+		ext = ".png"
+	} else if strings.Contains(contentType, "webp") {
+		ext = ".webp"
+	}
+	dir := a.cfg.Storage.LocalPreviewDir
+	fileName := videoID + ext
+	filePath := filepath.Join(dir, fileName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("[metatube] mkdir %s: %v", dir, err)
+		return ""
+	}
+	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+		log.Printf("[metatube] write cover %s: %v", filePath, err)
+		return ""
+	}
+	return "/p/thumb/" + videoID
 }
