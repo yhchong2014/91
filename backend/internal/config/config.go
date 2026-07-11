@@ -26,7 +26,16 @@ type Config struct {
 	Scanner Scanner `yaml:"scanner"`
 	Preview Preview `yaml:"preview"`
 	Nightly Nightly `yaml:"nightly"`
-	Drives  []Drive `yaml:"drives"`
+	Drives   []Drive  `yaml:"drives"`
+	MetaTube MetaTube `yaml:"metatube"`
+}
+
+// MetaTube configures the connection to a self-hosted MetaTube backend
+// for scraping video metadata (title, actors, tags, cover art) by video code.
+type MetaTube struct {
+	Enabled   bool   `yaml:"enabled"`
+	ServerURL string `yaml:"server_url"`
+	Token     string `yaml:"token"`
 }
 
 type Server struct {
@@ -202,7 +211,7 @@ type Nightly struct {
 // 这里保留 yaml 中的静态定义，用于启动时预置盘。生产建议只在 DB 里维护。
 type Drive struct {
 	ID     string            `yaml:"id"`
-	Kind   string            `yaml:"kind"` // quark / p115 / p123 / pikpak / wopan / guangyapan / onedrive / googledrive / localstorage
+	Kind   string            `yaml:"kind"` // quark / p115 / p123 / pikpak / wopan / guangyapan / onedrive / googledrive / localstorage / webdav
 	Name   string            `yaml:"name"`
 	RootID string            `yaml:"root_id"`
 	Params map[string]string `yaml:"params,omitempty"`
