@@ -49,7 +49,8 @@ preview:
   width: 480
 
 # 盘列表。上线后请通过管理后台添加，本文件可留空。
-# kind 支持 quark / p115 / p123 / pikpak / wopan / guangyapan / onedrive / googledrive / localstorage。
+# kind 支持 quark / p115 / p123 / pikpak / wopan / guangyapan / onedrive / googledrive / localstorage / webdav。
+#
 # OneDrive 示例：
 # - id: "my-onedrive"
 #   kind: "onedrive"
@@ -57,6 +58,7 @@ preview:
 #   root_id: "root"
 #   params:
 #     refresh_token: "..."
+#
 # Google Drive 示例：
 # - id: "my-google"
 #   kind: "googledrive"
@@ -66,6 +68,7 @@ preview:
 #     refresh_token: "..."
 #     client_id: "..."
 #     client_secret: "..."
+#
 # 光鸭网盘示例：
 # - id: "my-guangyapan"
 #   kind: "guangyapan"
@@ -77,6 +80,7 @@ preview:
 #     refresh_token: "..."
 #     # 可选：按路径解析扫描根目录，优先于 root_id
 #     # root_path: "影视/电影"
+#
 # 本地存储示例：
 # - id: "local-media"
 #   kind: "localstorage"
@@ -86,4 +90,36 @@ preview:
 #     # Docker 部署时这里和 .strm 里的绝对路径都必须使用容器内路径。
 #     # 例如宿主机 /mnt/videos 挂载为 /media，就填写 /media。
 #     path: "/mnt/videos"
+#
+# WebDAV 示例（Alist / Nextcloud / rclone serve webdav 等，支持 .strm 文件）：
+# 播放时后端自动 302 重定向到 WebDAV 服务器的直链或 CDN，视频流量不经过后端。
+# .strm 文件会被自动下载并解析其中的 HTTP/HTTPS URL 作为播放地址。
+# - id: "my-webdav"
+#   kind: "webdav"
+#   name: "我的 WebDAV"
+#   root_id: "/"
+#   params:
+#     # WebDAV 服务器地址（必填）
+#     address: "https://dav.example.com/dav"
+#     # WebDAV 用户名
+#     username: "user"
+#     # WebDAV 密码
+#     password: "pass"
+#     # WebDAV 根路径，默认 "/"。可指定子目录只扫描该目录下的内容。
+#     root_path: "/videos"
+#     # 是否跳过 TLS 证书验证（自签名证书时设为 "true"）
+#     tls_insecure_skip_verify: "false"
 drives: []
+
+# MetaTube 元数据刮削（需要自建 MetaTube 后端）。
+# 启用后，扫描到新视频时会自动根据文件名提取番号（如 ABP-123），
+# 向 MetaTube 后端查询元数据（标题、演员、标签、封面等）并写入视频库。
+# MetaTube 后端项目：https://github.com/metatube-community/metatube-sdk-go
+# Jellyfin 插件：https://github.com/metatube-community/jellyfin-plugin-metatube
+metatube:
+  # 是否启用 MetaTube 刮削
+  enabled: false
+  # MetaTube 后端地址（必填）
+  server_url: "http://127.0.0.1:8080"
+  # 可选：MetaTube API 认证令牌，留空表示无认证
+  token: ""
