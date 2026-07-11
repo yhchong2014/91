@@ -6,6 +6,7 @@ import p115Icon from "./icons/p115.png";
 import p123Icon from "./icons/p123.png";
 import pikpakIcon from "./icons/pikpak.png";
 import quarkIcon from "./icons/quark.png";
+import webdavIcon from "./icons/webdav.svg";
 import wopanIcon from "./icons/wopan.png";
 
 export type Kind = "quark" | "p115" | "p123" | "pikpak" | "wopan" | "guangyapan" | "onedrive" | "googledrive" | "localstorage" | "webdav";
@@ -33,6 +34,7 @@ export const kindIconPath: Record<string, string> = {
   onedrive: onedriveIcon,
   googledrive: googledriveIcon,
   localstorage: localstorageIcon,
+  webdav: webdavIcon,
 };
 
 export function driveKindAbbr(kind: string): string {
