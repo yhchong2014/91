@@ -159,7 +159,7 @@ func (p *Proxy) ServeStream(w http.ResponseWriter, r *http.Request, driveID, fil
 // 的特殊处理，浏览器拿不到这些上下文。
 func shouldRedirect(d drives.Drive) bool {
 	switch d.Kind() {
-	case "p115", "pikpak", "onedrive", "p123", "wopan", "guangyapan":
+	case "p115", "pikpak", "onedrive", "p123", "wopan", "guangyapan", "webdav":
 		return true
 	}
 	return false
