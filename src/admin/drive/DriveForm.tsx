@@ -28,6 +28,7 @@ const DRIVE_OPTIONS: DriveOption[] = [
   { kind: "quark", label: "夸克网盘", abbr: "Qk" },
   { kind: "wopan", label: "联通网盘", abbr: "Wo" },
   { kind: "localstorage", label: "本地存储", abbr: "Lo" },
+  { kind: "webdav", label: "WebDAV", abbr: "Dv" },
 ];
 
 export function DriveForm({
