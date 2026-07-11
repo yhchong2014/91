@@ -8,7 +8,7 @@ import pikpakIcon from "./icons/pikpak.png";
 import quarkIcon from "./icons/quark.png";
 import wopanIcon from "./icons/wopan.png";
 
-export type Kind = "quark" | "p115" | "p123" | "pikpak" | "wopan" | "guangyapan" | "onedrive" | "googledrive" | "localstorage";
+export type Kind = "quark" | "p115" | "p123" | "pikpak" | "wopan" | "guangyapan" | "onedrive" | "googledrive" | "localstorage" | "webdav";
 
 export const kindAbbr: Record<string, string> = {
   quark: "Qk",
@@ -20,6 +20,7 @@ export const kindAbbr: Record<string, string> = {
   onedrive: "OD",
   googledrive: "GD",
   localstorage: "Lo",
+  webdav: "Dv",
 };
 
 export const kindIconPath: Record<string, string> = {
@@ -58,6 +59,7 @@ export const kindLabel: Record<string, string> = {
   onedrive: "OneDrive",
   googledrive: "Google Drive",
   localstorage: "本地存储",
+  webdav: "WebDAV",
 };
 
 export type FormState = {
@@ -154,11 +156,12 @@ export function defaultRootId(kind: Kind): string {
   if (kind === "onedrive") return "root";
   if (kind === "googledrive") return "root";
   if (kind === "localstorage") return "/";
+  if (kind === "webdav") return "/";
   return "0";
 }
 
 export function usesRootDirectoryID(kind: Kind): boolean {
-  return kind !== "localstorage";
+  return kind !== "localstorage" && kind !== "webdav";
 }
 
 export function rootIdPlaceholder(kind: Kind): string {
@@ -306,6 +309,41 @@ export function credentialFields(kind: Kind): CredentialField[] {
           options: [
             { value: "false", label: "关闭（默认，仅允许目录内路径）" },
             { value: "true", label: "开启（允许任意本地路径）" },
+          ],
+        },
+      ];
+    case "webdav":
+      return [
+        {
+          key: "address",
+          label: "WebDAV 地址",
+          placeholder: "https://dav.example.com/dav",
+          required: true,
+        },
+        {
+          key: "username",
+          label: "用户名",
+          placeholder: "WebDAV 用户名",
+        },
+        {
+          key: "password",
+          label: "密码",
+          placeholder: "WebDAV 密码",
+        },
+        {
+          key: "root_path",
+          label: "根路径",
+          placeholder: "/ （默认根目录，可指定子目录）",
+        },
+        {
+          key: "tls_insecure_skip_verify",
+          label: "跳过 TLS 证书验证",
+          placeholder: "",
+          type: "select",
+          defaultValue: "false",
+          options: [
+            { value: "false", label: "关闭（默认，验证证书）" },
+            { value: "true", label: "开启（自签名证书时使用）" },
           ],
         },
       ];
